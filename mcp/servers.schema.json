@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Canonical MCP server list shared across agents",
+  "type": "object",
+  "additionalProperties": { "$ref": "#/$defs/server" },
+  "$defs": {
+    "server": {
+      "oneOf": [
+        { "$ref": "#/$defs/remote" },
+        { "$ref": "#/$defs/local" }
+      ]
+    },
+    "remote": {
+      "type": "object",
+      "properties": {
+        "type": { "const": "remote" },
+        "url": { "type": "string" },
+        "oauth": { "type": "boolean" },
+        "headers": { "type": "object", "additionalProperties": { "type": "string" } },
+        "disabled": { "type": "boolean" }
+      },
+      "required": ["type", "url"],
+      "additionalProperties": false
+    },
+    "local": {
+      "type": "object",
+      "properties": {
+        "type": { "const": "local" },
+        "command": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+        "cwd": { "type": "string" },
+        "environment": { "type": "object", "additionalProperties": { "type": "string" } },
+        "disabled": { "type": "boolean" },
+        "timeout": {
+          "type": "object",
+          "properties": {
+            "catalog": { "type": "integer", "exclusiveMinimum": 0 },
+            "execution": { "type": "integer", "exclusiveMinimum": 0 }
+          },
+          "additionalProperties": false
+        }
+      },
+      "required": ["type", "command"],
+      "additionalProperties": false
+    }
+  }
+}

@@ -1,0 +1,480 @@
+{
+  // NOTE: V2 shell permissions use whole-command glob matching, not shell parsing.
+  // A "*" can span spaces, so middle wildcards can match unintended commands if an
+  // argument contains a verb-like word. See the git -C and gcloud rules below.
+  "$schema": "https://opencode.ai/config.json",
+  "permissions": [
+    { "action": "*", "resource": "*", "effect": "ask" },
+    { "action": "read", "resource": "*", "effect": "allow" },
+    { "action": "read", "resource": "*.env", "effect": "deny" },
+    { "action": "read", "resource": "*.env.*", "effect": "deny" },
+    { "action": "read", "resource": "*.env.example", "effect": "allow" },
+    { "action": "edit", "resource": "*", "effect": "ask" },
+    { "action": "edit", "resource": "~/dev/local-data/**", "effect": "allow" },
+    { "action": "glob", "resource": "*", "effect": "allow" },
+    { "action": "grep", "resource": "*", "effect": "allow" },
+    { "action": "skill", "resource": "*", "effect": "allow" },
+    { "action": "subagent", "resource": "*", "effect": "allow" },
+    { "action": "question", "resource": "*", "effect": "allow" },
+    { "action": "todowrite", "resource": "*", "effect": "allow" },
+    { "action": "webfetch", "resource": "*", "effect": "allow" },
+    { "action": "websearch", "resource": "*", "effect": "allow" },
+    { "action": "atlassian_getJiraIssue", "resource": "*", "effect": "allow" },
+    { "action": "atlassian_searchJiraIssuesUsingJql", "resource": "*", "effect": "allow" },
+    { "action": "atlassian_getJiraIssueRemoteIssueLinks", "resource": "*", "effect": "allow" },
+    { "action": "atlassian_getJiraIssueTypeMetaWithFields", "resource": "*", "effect": "allow" },
+    { "action": "atlassian_getJiraProjectIssueTypesMetadata", "resource": "*", "effect": "allow" },
+    { "action": "atlassian_getTransitionsForJiraIssue", "resource": "*", "effect": "allow" },
+    { "action": "atlassian_getVisibleJiraProjects", "resource": "*", "effect": "allow" },
+    { "action": "atlassian_getIssueLinkTypes", "resource": "*", "effect": "allow" },
+    { "action": "atlassian_lookupJiraAccountId", "resource": "*", "effect": "allow" },
+    { "action": "atlassian_getAccessibleAtlassianResources", "resource": "*", "effect": "allow" },
+    { "action": "atlassian_atlassianUserInfo", "resource": "*", "effect": "allow" },
+    { "action": "atlassian_search", "resource": "*", "effect": "allow" },
+    { "action": "atlassian_fetch", "resource": "*", "effect": "allow" },
+    { "action": "slack-mcp_search_messages", "resource": "*", "effect": "allow" },
+    { "action": "github_get_me", "resource": "*", "effect": "allow" },
+    { "action": "github_get_file_contents", "resource": "*", "effect": "allow" },
+    { "action": "github_get_commit", "resource": "*", "effect": "allow" },
+    { "action": "github_get_label", "resource": "*", "effect": "allow" },
+    { "action": "github_get_latest_release", "resource": "*", "effect": "allow" },
+    { "action": "github_get_release_by_tag", "resource": "*", "effect": "allow" },
+    { "action": "github_get_tag", "resource": "*", "effect": "allow" },
+    { "action": "github_get_team_members", "resource": "*", "effect": "allow" },
+    { "action": "github_get_teams", "resource": "*", "effect": "allow" },
+    { "action": "github_issue_read", "resource": "*", "effect": "allow" },
+    { "action": "github_list_branches", "resource": "*", "effect": "allow" },
+    { "action": "github_list_commits", "resource": "*", "effect": "allow" },
+    { "action": "github_list_issue_fields", "resource": "*", "effect": "allow" },
+    { "action": "github_list_issue_types", "resource": "*", "effect": "allow" },
+    { "action": "github_list_issues", "resource": "*", "effect": "allow" },
+    { "action": "github_list_pull_requests", "resource": "*", "effect": "allow" },
+    { "action": "github_list_releases", "resource": "*", "effect": "allow" },
+    { "action": "github_list_repository_collaborators", "resource": "*", "effect": "allow" },
+    { "action": "github_list_tags", "resource": "*", "effect": "allow" },
+    { "action": "github_pull_request_read", "resource": "*", "effect": "allow" },
+    { "action": "github_search_code", "resource": "*", "effect": "allow" },
+    { "action": "github_search_commits", "resource": "*", "effect": "allow" },
+    { "action": "github_search_issues", "resource": "*", "effect": "allow" },
+    { "action": "github_search_pull_requests", "resource": "*", "effect": "allow" },
+    { "action": "github_search_repositories", "resource": "*", "effect": "allow" },
+    { "action": "github_search_users", "resource": "*", "effect": "allow" },
+    { "action": "external_directory", "resource": "~/.agents/**", "effect": "allow" },
+    { "action": "external_directory", "resource": "~/dev/**", "effect": "allow" },
+    { "action": "external_directory", "resource": "~/go/**", "effect": "allow" },
+    { "action": "shell", "resource": "*", "effect": "ask" },
+    { "action": "shell", "resource": "cat *", "effect": "allow" },
+    { "action": "shell", "resource": "date *", "effect": "allow" },
+    { "action": "shell", "resource": "diff *", "effect": "allow" },
+    { "action": "shell", "resource": "du *", "effect": "allow" },
+    { "action": "shell", "resource": "echo *", "effect": "allow" },
+    { "action": "shell", "resource": "file *", "effect": "allow" },
+    { "action": "shell", "resource": "find *", "effect": "allow" },
+    // Forbid root-filesystem find scans; this follows the broad find allow.
+    { "action": "shell", "resource": "find /", "effect": "deny" },
+    { "action": "shell", "resource": "find / *", "effect": "deny" },
+    { "action": "shell", "resource": "grep *", "effect": "allow" },
+    { "action": "shell", "resource": "head *", "effect": "allow" },
+    { "action": "shell", "resource": "ls *", "effect": "allow" },
+    { "action": "shell", "resource": "ps *", "effect": "allow" },
+    { "action": "shell", "resource": "pwd", "effect": "allow" },
+    { "action": "shell", "resource": "stat *", "effect": "allow" },
+    { "action": "shell", "resource": "tail *", "effect": "allow" },
+    { "action": "shell", "resource": "timeout *", "effect": "allow" },
+    { "action": "shell", "resource": "tree *", "effect": "allow" },
+    { "action": "shell", "resource": "type *", "effect": "allow" },
+    { "action": "shell", "resource": "wc *", "effect": "allow" },
+    { "action": "shell", "resource": "which *", "effect": "allow" },
+    { "action": "shell", "resource": "git blame *", "effect": "allow" },
+    { "action": "shell", "resource": "git branch *", "effect": "allow" },
+    { "action": "shell", "resource": "git diff *", "effect": "allow" },
+    { "action": "shell", "resource": "git fetch *", "effect": "allow" },
+    { "action": "shell", "resource": "git log *", "effect": "allow" },
+    { "action": "shell", "resource": "git ls-files *", "effect": "allow" },
+    { "action": "shell", "resource": "git remote -v", "effect": "allow" },
+    { "action": "shell", "resource": "git show *", "effect": "allow" },
+    { "action": "shell", "resource": "git status *", "effect": "allow" },
+    // V2 '*' spans spaces, so this can match a verb-like argument.
+    { "action": "shell", "resource": "git -C * blame *", "effect": "allow" },
+    { "action": "shell", "resource": "git -C * branch *", "effect": "allow" },
+    { "action": "shell", "resource": "git -C * diff *", "effect": "allow" },
+    { "action": "shell", "resource": "git -C * fetch *", "effect": "allow" },
+    { "action": "shell", "resource": "git -C * log *", "effect": "allow" },
+    { "action": "shell", "resource": "git -C * ls-files *", "effect": "allow" },
+    { "action": "shell", "resource": "git -C * remote -v", "effect": "allow" },
+    { "action": "shell", "resource": "git -C * show *", "effect": "allow" },
+    { "action": "shell", "resource": "git -C * status *", "effect": "allow" },
+    { "action": "shell", "resource": "helm version*", "effect": "allow" },
+    { "action": "shell", "resource": "helm template *", "effect": "allow" },
+    { "action": "shell", "resource": "helm list*", "effect": "allow" },
+    { "action": "shell", "resource": "helm ls*", "effect": "allow" },
+    { "action": "shell", "resource": "helm get *", "effect": "allow" },
+    { "action": "shell", "resource": "helm show *", "effect": "allow" },
+    { "action": "shell", "resource": "helm status *", "effect": "allow" },
+    { "action": "shell", "resource": "helm history *", "effect": "allow" },
+    { "action": "shell", "resource": "helm search *", "effect": "allow" },
+    { "action": "shell", "resource": "helm lint *", "effect": "allow" },
+    { "action": "shell", "resource": "helm repo list*", "effect": "allow" },
+    { "action": "shell", "resource": "helm plugin list*", "effect": "allow" },
+    { "action": "shell", "resource": "helm env*", "effect": "allow" },
+    { "action": "shell", "resource": "helm verify *", "effect": "allow" },
+    { "action": "shell", "resource": "helm dependency list*", "effect": "allow" },
+    { "action": "shell", "resource": "helm dep list*", "effect": "allow" },
+    { "action": "shell", "resource": "helm inspect *", "effect": "allow" },
+    { "action": "shell", "resource": "helm diff *", "effect": "allow" },
+    { "action": "shell", "resource": "helm completion*", "effect": "allow" },
+    { "action": "shell", "resource": "terraform version*", "effect": "allow" },
+    { "action": "shell", "resource": "terraform validate*", "effect": "allow" },
+    { "action": "shell", "resource": "terraform fmt -check*", "effect": "allow" },
+    { "action": "shell", "resource": "terraform plan *", "effect": "allow" },
+    { "action": "shell", "resource": "terraform show *", "effect": "allow" },
+    { "action": "shell", "resource": "terraform output *", "effect": "allow" },
+    { "action": "shell", "resource": "terraform state list*", "effect": "allow" },
+    { "action": "shell", "resource": "terraform state show *", "effect": "allow" },
+    { "action": "shell", "resource": "terraform providers*", "effect": "allow" },
+    { "action": "shell", "resource": "terraform workspace list*", "effect": "allow" },
+    { "action": "shell", "resource": "terraform workspace show*", "effect": "allow" },
+    { "action": "shell", "resource": "terraform graph *", "effect": "allow" },
+    { "action": "shell", "resource": "kubectl get *", "effect": "allow" },
+    { "action": "shell", "resource": "kubectl describe *", "effect": "allow" },
+    { "action": "shell", "resource": "kubectl logs *", "effect": "allow" },
+    { "action": "shell", "resource": "kubectl top *", "effect": "allow" },
+    { "action": "shell", "resource": "kubectl explain *", "effect": "allow" },
+    { "action": "shell", "resource": "kubectl api-resources*", "effect": "allow" },
+    { "action": "shell", "resource": "kubectl api-versions*", "effect": "allow" },
+    { "action": "shell", "resource": "kubectl version*", "effect": "allow" },
+    { "action": "shell", "resource": "kubectl diff *", "effect": "allow" },
+    { "action": "shell", "resource": "kubectl config view*", "effect": "allow" },
+    { "action": "shell", "resource": "kubectl config get-contexts*", "effect": "allow" },
+    { "action": "shell", "resource": "kubectl config current-context*", "effect": "allow" },
+    { "action": "shell", "resource": "kubectl cluster-info*", "effect": "allow" },
+    { "action": "shell", "resource": "kubectl auth can-i *", "effect": "allow" },
+    { "action": "shell", "resource": "oc get *", "effect": "allow" },
+    { "action": "shell", "resource": "oc describe *", "effect": "allow" },
+    { "action": "shell", "resource": "oc logs *", "effect": "allow" },
+    { "action": "shell", "resource": "oc status*", "effect": "allow" },
+    { "action": "shell", "resource": "oc whoami*", "effect": "allow" },
+    { "action": "shell", "resource": "oc version*", "effect": "allow" },
+    { "action": "shell", "resource": "oc explain *", "effect": "allow" },
+    { "action": "shell", "resource": "oc project*", "effect": "allow" },
+    { "action": "shell", "resource": "oc projects*", "effect": "allow" },
+    { "action": "shell", "resource": "oc config view*", "effect": "allow" },
+    { "action": "shell", "resource": "oc api-resources*", "effect": "allow" },
+    { "action": "shell", "resource": "oc cluster-info*", "effect": "allow" },
+    // Keep gcloud read-only allowlists explicit; do not use broad verb wildcards.
+    { "action": "shell", "resource": "gcloud version*", "effect": "allow" },
+    { "action": "shell", "resource": "gcloud config list*", "effect": "allow" },
+    { "action": "shell", "resource": "gcloud config get-value *", "effect": "allow" },
+    { "action": "shell", "resource": "gcloud auth list*", "effect": "allow" },
+    { "action": "shell", "resource": "gcloud projects describe *", "effect": "allow" },
+    { "action": "shell", "resource": "gcloud projects list*", "effect": "allow" },
+    { "action": "shell", "resource": "gcloud iam service-accounts list*", "effect": "allow" },
+    { "action": "shell", "resource": "gcloud iam service-accounts describe *", "effect": "allow" },
+    { "action": "shell", "resource": "gcloud iam service-accounts get-iam-policy *", "effect": "allow" },
+    { "action": "shell", "resource": "gcloud services list*", "effect": "allow" },
+    { "action": "shell", "resource": "gcloud compute instances list*", "effect": "allow" },
+    { "action": "shell", "resource": "gcloud compute instances describe *", "effect": "allow" },
+    { "action": "shell", "resource": "gcloud container clusters list*", "effect": "allow" },
+    { "action": "shell", "resource": "gcloud container clusters describe *", "effect": "allow" },
+    { "action": "shell", "resource": "yamllint *", "effect": "allow" },
+    { "action": "shell", "resource": "jsonlint *", "effect": "allow" },
+    { "action": "shell", "resource": "gh --version*", "effect": "allow" },
+    { "action": "shell", "resource": "gh status*", "effect": "allow" },
+    { "action": "shell", "resource": "gh auth status*", "effect": "allow" },
+    { "action": "shell", "resource": "gh repo view *", "effect": "allow" },
+    { "action": "shell", "resource": "gh pr view *", "effect": "allow" },
+    { "action": "shell", "resource": "gh pr list*", "effect": "allow" },
+    { "action": "shell", "resource": "gh pr diff *", "effect": "allow" },
+    { "action": "shell", "resource": "gh pr status*", "effect": "allow" },
+    { "action": "shell", "resource": "gh pr checks *", "effect": "allow" },
+    { "action": "shell", "resource": "gh issue view *", "effect": "allow" },
+    { "action": "shell", "resource": "gh issue list*", "effect": "allow" },
+    { "action": "shell", "resource": "gh issue status*", "effect": "allow" },
+    { "action": "shell", "resource": "gh run list*", "effect": "allow" },
+    { "action": "shell", "resource": "gh run view *", "effect": "allow" },
+    { "action": "shell", "resource": "gh run watch *", "effect": "allow" },
+    { "action": "shell", "resource": "gh workflow list*", "effect": "allow" },
+    { "action": "shell", "resource": "gh workflow view *", "effect": "allow" },
+    { "action": "shell", "resource": "gh release list*", "effect": "allow" },
+    { "action": "shell", "resource": "gh release view *", "effect": "allow" },
+    { "action": "shell", "resource": "gh gist list*", "effect": "allow" },
+    { "action": "shell", "resource": "gh gist view *", "effect": "allow" },
+    { "action": "shell", "resource": "gh search *", "effect": "allow" },
+    { "action": "shell", "resource": "gh browse --no-browser*", "effect": "allow" },
+    { "action": "shell", "resource": "go *", "effect": "allow" },
+  ],
+  "providers": {
+    "google-vertex": {
+      "settings": {
+        "project": "itpc-ca-0ae3c7024b",
+        // "project": "itpc-gcp-hcm-pe-eng-claude",
+        "location": "global"
+      // },
+      // "models": {
+      //   "opus": {
+      //     "id": "claude-opus-5@default"
+      //   },
+      //   "sonnet": {
+      //     "id": "claude-sonnet-5@default"
+      //   },
+      //   "haiku": {
+      //     "id": "claude-haiku-4-5@20251001"
+      //   }
+      }
+    },
+
+    "openai": {
+      "settings": {
+        "apiKey": "{file:~/.secrets/openai-api-key}"
+      // },
+      // "models": {
+      //   "gpt-6-astra": {
+      //     "name": "GPT-6 Astra",
+      //     "limit": {
+      //       "context": 1050000,
+      //       "output": 128000
+      //     }
+      //   },
+      //   "gpt-6-sol": {
+      //     "name": "GPT-6 Sol",
+      //     "limit": {
+      //       "context": 1050000,
+      //       "output": 128000
+      //     }
+      //   },
+      //   "gpt-5-6-terra": {
+      //     "name": "GPT-5.6 Terra",
+      //     "limit": {
+      //       "context": 1050000,
+      //       "output": 128000
+      //     }
+      //   },
+      //   "gpt-6-luna": {
+      //     "name": "GPT-6 Luna",
+      //     "limit": {
+      //       "context": 1050000,
+      //       "output": 128000
+      //     }
+      //   }
+      }
+    },
+
+    // "llm-homebase": {
+    //   "npm": "@ai-sdk/openai-compatible",
+    //   "name": "llm-homebase (local proxy)",
+    //   "options": {
+    //     "baseURL": "http://localhost:4000/v1",
+    //     // Store your virtual key in a file — never hardcode it
+    //     "apiKey": "{file:~/.secrets/litellm-key}"
+    //   },
+    //   "models": {
+    //     // claude-auto: complexity-based auto-router (recommended default)
+    //     //   SIMPLE    → claude-haiku  (greetings, short prompts)
+    //     //   MEDIUM    → claude-sonnet (general coding)
+    //     //   COMPLEX   → claude-sonnet
+    //     //   REASONING → claude-opus   (architecture, hard debugging)
+    //     "claude-auto": {
+    //       "name": "Auto (proxy)",
+    //       "modalities": {
+    //         "input": ["text", "image"],
+    //         "output": ["text"]
+    //       }
+    //     },
+    //     "claude-opus": {
+    //       "name": "Opus (proxy)",
+    //       "modalities": {
+    //         "input": ["text", "image"],
+    //         "output": ["text"]
+    //       }
+    //     },
+    //     "claude-sonnet": {
+    //       "name": "Sonnet (proxy)",
+    //       "modalities": {
+    //         "input": ["text", "image"],
+    //         "output": ["text"]
+    //       }
+    //     },
+    //     "claude-haiku": {
+    //       "name": "Haiku (proxy)",
+    //       "modalities": {
+    //         "input": ["text", "image"],
+    //         "output": ["text"]
+    //       }
+    //     },
+    //     "gemini-pro": {
+    //       "name": "Gemini Pro (proxy)",
+    //       "modalities": {
+    //         "input": ["text", "image"],
+    //         "output": ["text"]
+    //       }
+    //     },
+    //     "gemini-flash": {
+    //       "name": "Gemini Flash (proxy)",
+    //       "modalities": {
+    //         "input": ["text", "image"],
+    //         "output": ["text"]
+    //       }
+    //     },
+    //     "gemini-flash-lite": {
+    //       "name": "Gemini Flash Lite (proxy)",
+    //       "modalities": {
+    //         "input": ["text", "image"],
+    //         "output": ["text"]
+    //       }
+    //     }
+    //   }
+    // },
+
+    // "llamacpp": {
+    //   "npm": "@ai-sdk/openai-compatible",
+    //   "name": "llama.cpp",
+    //   "options": {
+    //     "baseURL": "http://127.0.0.1:8080/v1"
+    //   },
+    //   "models": {
+    //     "qwen2.5-0.5b": {
+    //       "limit": {
+    //         "context": 32768,
+    //         "output": 4096
+    //       }
+    //     }
+    //   }
+    // },
+
+    // EnMaaS setup notes: https://source.redhat.com/departments/products_and_global_engineering/workload_management/enmaas
+    // Keep EnMaaS under separate provider IDs so existing OpenAI/Vertex routes stay unchanged.
+    "enmaas-free": {
+      "name": "EnMaaS Free Tier",
+      "package": "@opencode/ai/providers/openai-compatible",
+      "settings": {
+        "baseURL": "https://api.enmaas.devshift.net/v1",
+        "apiKey": "{file:~/.secrets/enmaas-key}"
+      },
+      "models": {
+        "rits/zai-org/glm-5-3": {
+          "name": "GLM 5.3",
+          "limit": {
+            "context": 1000000,
+            "output": 65536
+          }
+        }
+      }
+    },
+
+    // https://github.com/redhat-et/pricetag/blob/main/deploy/openshift/overlays/enmaas/vertex-fragments/openai-model-to-provider.yaml
+    "enmaas-google": {
+      "name": "EnMaaS Google",
+      "package": "@opencode/ai/providers/openai-compatible",
+      "settings": {
+        "baseURL": "https://api.enmaas.devshift.net/v1",
+        "apiKey": "{file:~/.secrets/enmaas-key}"
+      },
+      "models": {
+        "gemini-3.8-flash": {
+          "name": "Gemini 3.8 Flash",
+          "limit": {
+            "context": 1050000,
+            "output": 65536
+          }
+        }
+      }
+    },
+
+    // https://github.com/redhat-et/pricetag/blob/main/deploy/openshift/overlays/enmaas/vertex-fragments/model-to-provider.yaml
+    // https://github.com/redhat-et/pricetag/blob/main/deploy/openshift/overlays/enmaas/vertex-fragments/vertex-only-access.yaml
+    "enmaas-anthropic": {
+      "name": "EnMaaS Anthropic",
+      "package": "@opencode/ai/providers/anthropic-compatible",
+      "settings": {
+        "baseURL": "https://api.enmaas.devshift.net/v1",
+        "apiKey": "{file:~/.secrets/enmaas-key}"
+      },
+      "models": {
+        "claude-haiku-4-5": {
+          "name": "Claude Haiku 4.5",
+          // "compatibility": {
+          //   "supportsThinkingBlockBinding": false
+          // }
+        },
+        // "claude-haiku-5-5": {
+        //   "name": "Claude Haiku 5.5",
+        //   // "compatibility": {
+        //   //   "supportsThinkingBlockBinding": false
+        //   // }
+        // },
+        "claude-sonnet-5-5": {
+          "name": "Claude Sonnet 5.5",
+          "compatibility": {
+            "supportsThinkingBlockBinding": false
+          }
+        },
+        "claude-opus-5-5": {
+          "name": "Claude Opus 5.5",
+          "compatibility": {
+            "supportsThinkingBlockBinding": false
+          }
+        }
+      }
+    },
+
+    "enmaas-openai": {
+      "name": "EnMaaS OpenAI",
+      // the classi /completions api on enmaas does not allow to set both tools and reasoning effort:
+      // Error: Function tools with reasoning_effort are not supported for gpt-6-sol in /v1/chat/completions. To use function tools, use /v1/responses or set reasoning_effort to 'none'.
+      // "package": "@opencode/ai/providers/openai-compatible",
+      "package": "@opencode/ai/providers/openai-compatible-responses",
+      "settings": {
+        "baseURL": "https://api.enmaas.devshift.net/v1",
+        "apiKey": "{file:~/.secrets/enmaas-key}"
+      },
+      "models": {
+        "gpt-6-luna": {
+          "name": "GPT-6 Luna",
+          // "settings": {
+          //   "reasoningEffort": "high"
+          // },
+          "limit": {
+            "context": 1050000,
+            "output": 128000
+          }
+        },
+        "gpt-6-sol": {
+          "name": "GPT-6 Sol",
+          "limit": {
+            "context": 1050000,
+            "output": 128000
+          }
+        },
+        "gpt-6-astra": {
+          "name": "GPT-6 Astra",
+          "limit": {
+            "context": 1050000,
+            "output": 128000
+          }
+        },
+      }
+    },
+  },
+  "model": "openai/gpt-6-luna",
+  "agents": {
+    "plan": {
+      "model": "openai/gpt-6-astra"
+    },
+    "build": {
+      "model": "openai/gpt-6-luna"
+    },
+    "title": {
+      "model": "openai/gpt-6-luna"
+    },
+//    "compaction": {
+//      "model": "google/gemini-3.5-flash-lite"
+//    },
+    "summary": {
+      "model": "openai/gpt-6-luna"
+    }
+  },
+  "commands": {},
+  "plugins": [],
+  // "lsp": {},
+  "mcp": {{ mcp_section }}
+}

@@ -1,0 +1,55 @@
+{
+  "atlassian": {
+    "type": "remote",
+    "url": "https://mcp.atlassian.com/v1/mcp?capabilities=READ_JIRA,WRITE_JIRA,SEARCH_JIRA,READ_CONFLUENCE,WRITE_CONFLUENCE,SEARCH_CONFLUENCE,SEARCH_ATLASSIAN"
+  },
+  "chai-bot-gcp-hcp-engineering": {
+    "type": "remote",
+    "url": "https://ship-help-mcp-continuous-release-toolting--ship-help-bot.apps.gpc.ocp-hub.prod.psi.redhat.com/personas/gcp_hcp_engineering/mcp",
+    "oauth": false,
+    "headers": {
+      "Authorization": "Bearer {file:~/.secrets/chai-bot-gcp-hcp-engineering-token}"
+    }
+  },
+  "decision-support": {
+    "type": "local",
+    "command": ["uv", "run", "--script", "decision_mcp.py"],
+    "cwd": "/home/patmarti/dev/llama-cpp-bin",
+    "disabled": false,
+    "timeout": {
+      "catalog": 180000,
+      "execution": 180000
+    }
+  },
+  "slack-mcp": {
+    "type": "local",
+    "command": [
+      "podman",
+      "run",
+      "-i",
+      "--rm",
+      "-e",
+      "SLACK_XOXC_TOKEN",
+      "-e",
+      "SLACK_XOXD_TOKEN",
+      "-e",
+      "MCP_TRANSPORT=stdio",
+      "-e",
+      "LOGS_CHANNEL_ID",
+      "quay.io/redhat-ai-tools/slack-mcp"
+    ],
+    "environment": {
+      "SLACK_XOXC_TOKEN": "{env:SLACK_MCP_XOXC_TOKEN}",
+      "SLACK_XOXD_TOKEN": "{env:SLACK_MCP_XOXD_TOKEN}",
+      "LOGS_CHANNEL_ID": "{env:SLACK_MCP_LOGS_CHANNEL_ID}"
+    }
+  }
+  // GitHub MCP disabled — prefer gh CLI for now.
+  // "github": {
+  //   "type": "remote",
+  //   "url": "https://api.githubcopilot.com/mcp/",
+  //   "headers": {
+  //     "Authorization": "Bearer {file:~/.secrets/github-pat}"
+  //   }
+  // }
+}
