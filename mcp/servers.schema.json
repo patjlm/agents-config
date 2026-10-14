@@ -10,6 +10,14 @@
         { "$ref": "#/$defs/local" }
       ]
     },
+    "claude_overrides": {
+      "type": "object",
+      "description": "Per-agent overrides: deep-merged over the base server when rendering for that agent (dicts merge per-key, scalars/lists replace). 'exclude': true skips the server for that agent. Override values are written in the target agent's syntax.",
+      "properties": {
+        "exclude": { "type": "boolean" }
+      },
+      "additionalProperties": true
+    },
     "remote": {
       "type": "object",
       "properties": {
@@ -17,7 +25,8 @@
         "url": { "type": "string" },
         "oauth": { "type": "boolean" },
         "headers": { "type": "object", "additionalProperties": { "type": "string" } },
-        "disabled": { "type": "boolean" }
+        "disabled": { "type": "boolean" },
+        "claude": { "$ref": "#/$defs/claude_overrides" }
       },
       "required": ["type", "url"],
       "additionalProperties": false
@@ -30,6 +39,7 @@
         "cwd": { "type": "string" },
         "environment": { "type": "object", "additionalProperties": { "type": "string" } },
         "disabled": { "type": "boolean" },
+        "claude": { "$ref": "#/$defs/claude_overrides" },
         "timeout": {
           "type": "object",
           "properties": {

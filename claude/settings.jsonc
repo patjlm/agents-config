@@ -1,0 +1,100 @@
+{
+  // Rendered to ~/.claude/settings.json (plain JSON — Claude Code can't read
+  // comments) by install.py. Generated file is compared as parsed JSON, so
+  // Claude Code's own reformatting doesn't trigger reinstalls.
+  "apiKeyHelper": "cat ~/.secrets/enmaas-key",
+  "env": {
+    "ENABLE_TOOL_SEARCH": "auto:0",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "claude-haiku-4-5",
+    "ANTHROPIC_VERTEX_PROJECT_ID": "itpc-ca-0ae3c7024b",
+    "ANTHROPIC_BASE_URL": "https://api.enmaas.devshift.net",
+    "CLAUDE_CODE_USE_VERTEX": "",
+    "CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY": "1"
+  },
+  // Claude Code writes granted permissions here ("always allow" etc.) —
+  // installs warn about keys/values it holds that this source doesn't.
+  "permissions": {},
+  "model": "rits/zai-org/glm-5-3[1m]",
+  "modelPicker": {
+    "options": [
+      {
+        "model": "rits/zai-org/glm-5-3[1m]",
+        "label": "GLM 5.3",
+        "description": "Hosted via EnMaaS"
+      }
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "^(startup|resume|clear|compact|fork)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash '/home/patmarti/.claude/hooks/herdr-agent-state.sh' session",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "bash /home/patmarti/.claude/statusline-command.sh"
+  },
+  // true = install (applied via the claude CLI by install.py, idempotent)
+  "enabledPlugins": {
+    "mcp@patjlm-agents-config": true,
+    "caveman@caveman": true,
+    "ci@ai-helpers": true,
+    "gcp-hcp@gcp-hcp": true,
+    "golang@ai-helpers": false,
+    "gopls-lsp@claude-plugins-official": true,
+    "hcp@ai-helpers": true,
+    "jira@ai-helpers": true,
+    "teams@ai-helpers": true,
+    "code-review@claude-plugins-official": true
+  },
+  "extraKnownMarketplaces": {
+    "caveman": {
+      "source": {
+        "source": "github",
+        "repo": "juliusbrussee/caveman"
+      }
+    },
+    "ai-helpers": {
+      "source": {
+        "source": "github",
+        "repo": "openshift-eng/ai-helpers"
+      }
+    },
+    "gcp-hcp": {
+      "source": {
+        "source": "github",
+        "repo": "openshift-online/gcp-hcp"
+      }
+    },
+    "claude-plugins-official": {
+      "source": {
+        "source": "github",
+        "repo": "anthropics/claude-plugins-official"
+      }
+    },
+    "patjlm-agents-config": {
+      "source": {
+        "source": "directory",
+        "path": "/home/patmarti/dev/patjlm/agents-config/claude/plugins"
+      }
+    }
+  },
+  "modelSettings": {
+    "claude-sonnet-5": {
+      "effortLevel": "high"
+    },
+    "rits/zai-org/glm-5-3": {
+      "effortLevel": "high"
+    }
+  },
+  "skipWorkflowUsageWarning": true,
+  "theme": "light"
+}

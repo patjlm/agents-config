@@ -1,0 +1,8 @@
+{
+  "name": "mcp",
+  "description": "MCP servers rendered from mcp/servers.jsonc — do not hand-edit .mcp.json",
+  "version": "0.1.0",
+  "author": {
+    "name": "Patrick Martin"
+  }
+}

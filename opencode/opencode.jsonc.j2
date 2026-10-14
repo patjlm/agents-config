@@ -3,6 +3,7 @@
   // A "*" can span spaces, so middle wildcards can match unintended commands if an
   // argument contains a verb-like word. See the git -C and gcloud rules below.
   "$schema": "https://opencode.ai/config.json",
+  "instructions": ["{{ home }}/.agents/AGENTS.md"],
   "permissions": [
     { "action": "*", "resource": "*", "effect": "ask" },
     { "action": "read", "resource": "*", "effect": "allow" },
@@ -204,8 +205,14 @@
     { "action": "shell", "resource": "go *", "effect": "allow" },
   ],
   "providers": {
+    "google": {
+      "settings": {
+        "apiKey": "{file:~/.secrets/gemini-api-key}"
+      }
+    },
     "google-vertex": {
       "settings": {
+        // auth relies on gcloud ADC
         "project": "itpc-ca-0ae3c7024b",
         // "project": "itpc-gcp-hcm-pe-eng-claude",
         "location": "global"
@@ -354,7 +361,7 @@
         "rits/zai-org/glm-5-3": {
           "name": "GLM 5.3",
           "limit": {
-            "context": 1000000,
+            "context": 1050000,
             "output": 65536
           }
         }
@@ -455,22 +462,22 @@
       }
     },
   },
-  "model": "openai/gpt-6-luna",
+  "model": "enmaas-free/rits/zai-org/glm-5-3",
   "agents": {
     "plan": {
       "model": "openai/gpt-6-astra"
     },
     "build": {
-      "model": "openai/gpt-6-luna"
+      "model": "enmaas-free/rits/zai-org/glm-5-3"
     },
     "title": {
-      "model": "openai/gpt-6-luna"
+      "model": "enmaas-free/rits/zai-org/glm-5-3"
     },
-//    "compaction": {
-//      "model": "google/gemini-3.5-flash-lite"
-//    },
+    "compaction": {
+      "model": "enmaas-free/rits/zai-org/glm-5-3"
+    },
     "summary": {
-      "model": "openai/gpt-6-luna"
+      "model": "enmaas-free/rits/zai-org/glm-5-3"
     }
   },
   "commands": {},

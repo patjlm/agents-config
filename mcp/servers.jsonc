@@ -1,14 +1,23 @@
 {
   "atlassian": {
     "type": "remote",
-    "url": "https://mcp.atlassian.com/v1/mcp?capabilities=READ_JIRA,WRITE_JIRA,SEARCH_JIRA,READ_CONFLUENCE,WRITE_CONFLUENCE,SEARCH_CONFLUENCE,SEARCH_ATLASSIAN"
+    "url": "https://mcp.atlassian.com/v1/mcp?capabilities=READ_JIRA,WRITE_JIRA,SEARCH_JIRA,READ_CONFLUENCE,WRITE_CONFLUENCE,SEARCH_CONFLUENCE,SEARCH_ATLASSIAN",
+    // claude: provided by the jira@ai-helpers plugin instead
+    "claude": { "exclude": true }
   },
   "chai-bot-gcp-hcp-engineering": {
     "type": "remote",
     "url": "https://ship-help-mcp-continuous-release-toolting--ship-help-bot.apps.gpc.ocp-hub.prod.psi.redhat.com/personas/gcp_hcp_engineering/mcp",
     "oauth": false,
     "headers": {
+      // opencode reads the token file at runtime
       "Authorization": "Bearer {file:~/.secrets/chai-bot-gcp-hcp-engineering-token}"
+    },
+    // claude can't read files — use the env var (set in bashrc) instead
+    "claude": {
+      "headers": {
+        "Authorization": "Bearer ${CHAI_BOT_GCP_HCP_ENGINEERING_TOKEN}"
+      }
     }
   },
   "decision-support": {
@@ -49,7 +58,14 @@
   //   "type": "remote",
   //   "url": "https://api.githubcopilot.com/mcp/",
   //   "headers": {
-  //     "Authorization": "Bearer {file:~/.secrets/github-pat}"
+  //     "headers": {
+  //       "Authorization": "Bearer {file:~/.secrets/github-pat}"
+  //     },
+  //     "claude": {
+  //       "headers": {
+  //         "Authorization": "Bearer ${GITHUB_MCP_PAT}"
+  //       }
+  //     }
   //   }
   // }
 }

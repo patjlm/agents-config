@@ -1,0 +1,15 @@
+{
+  "name": "patjlm-agents-config",
+  "owner": {
+    "name": "Patrick Martin"
+  },
+  "plugins": [
+    {
+      "name": "mcp",
+      "source": "./mcp",
+      "description": "MCP servers rendered from mcp/servers.jsonc (single source of truth)",
+      "category": "development",
+      "keywords": ["mcp"]
+    }
+  ]
+}
