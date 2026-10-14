@@ -1,7 +1,9 @@
 {
-  // Rendered to ~/.claude/settings.json (plain JSON — Claude Code can't read
-  // comments) by install.py. Generated file is compared as parsed JSON, so
-  // Claude Code's own reformatting doesn't trigger reinstalls.
+  // Jinja template: rendered by install.py with {{ home }} / {{ repo }}
+  // substitution, then serialized to plain JSON (Claude Code can't read
+  // comments) into ~/.claude/settings.json. The installed file is compared
+  // as parsed JSON, so Claude Code's own reformatting doesn't trigger
+  // reinstalls.
   "apiKeyHelper": "cat ~/.secrets/enmaas-key",
   "env": {
     "ENABLE_TOOL_SEARCH": "auto:0",
@@ -31,7 +33,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash '/home/patmarti/.claude/hooks/herdr-agent-state.sh' session",
+            "command": "bash '{{ home }}/.claude/hooks/herdr-agent-state.sh' session",
             "timeout": 10
           }
         ]
@@ -40,7 +42,7 @@
   },
   "statusLine": {
     "type": "command",
-    "command": "bash /home/patmarti/.claude/statusline-command.sh"
+    "command": "bash {{ home }}/.claude/statusline-command.sh"
   },
   // true = install (applied via the claude CLI by install.py, idempotent)
   "enabledPlugins": {
@@ -83,7 +85,7 @@
     "patjlm-agents-config": {
       "source": {
         "source": "directory",
-        "path": "/home/patmarti/dev/patjlm/agents-config/claude/plugins"
+        "path": "{{ repo }}/claude/plugins"
       }
     }
   },

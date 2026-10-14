@@ -5,9 +5,15 @@
 """Render agent config templates, validate, and install them.
 
 Usage:
-    uv run install.py             # render + validate + install (incl. plugins)
+    uv run install.py             # render + validate + install (all agents)
     uv run install.py --check     # render + validate only, write nothing
-    uv run install.py --plugins   # only plugins (incl. the mcp plugin)
+    uv run install.py --plugins   # only claude plugins (incl. the mcp plugin)
+
+Structure: shared primitives, shared data, then one section per agent —
+INSTALLERS lists them, so adding an agent is a new section + one entry.
+Agent-specific *formats* live in the agent's folder as Jinja templates
+(opencode.jsonc.j2, settings.jsonc.j2); agent-specific *behavior* (symlinks,
+CLI calls, drift checks) lives in the agent's section here.
 
 Validation:
     - Rendered configs: syntax check (json5 parse). The upstream opencode
@@ -16,40 +22,38 @@ Validation:
       Revisit if upstream publishes a V2 schema.
     - Shared data (mcp/servers.jsonc): checked against mcp/servers.schema.json
       (self-owned, so it tracks reality).
-    - claude/settings.jsonc: parse check (json5 — comments allowed) before
+    - claude/settings.jsonc.j2: parse check (json5 — comments allowed) before
       rendering to ~/.claude/settings.json.
 
 Install mechanisms (see AGENTS.md):
-    - opencode: rendered template → ~/.config/opencode/opencode.jsonc.
+    - opencode: template render → ~/.config/opencode/opencode.jsonc.
     - claude: 1:1 files (CLAUDE.md, statusline, agents/, commands/, hooks/,
-      skills/) → symlinks into ~/.claude. settings.jsonc is rendered to JSON
-      and copied to ~/.claude/settings.json (Claude Code itself writes to it
-      — permissions, /config — and those writes must not hit the repo; it
-      also can't read comments). The unchanged check compares parsed JSON,
-      so Claude Code's reformatting doesn't trigger reinstalls.
-    - claude plugins: marketplaces (extraKnownMarketplaces) and plugins
-      (enabledPlugins, true = install) live in claude/settings.json —
-      install.py applies them via the `claude` CLI (idempotent).
-    - claude MCP: mcp/servers.jsonc (opencode format) is translated into
-      claude/plugins/mcp/.mcp.json — our own plugin, delivered via the
-      patjlm-agents-config marketplace in claude/plugins/. Generated file,
-      gitignored. Per-server "claude" overrides (deep-merged over the base
-      server) handle claude-only differences — e.g. replacing a {file:...}
-      secret reference with a ${VAR} env ref (claude cannot read files);
-      secret contents are never inlined.
+      skills/) → symlinks into ~/.claude. settings.jsonc.j2 is rendered to
+      JSON and copied to ~/.claude/settings.json — never symlinked, Claude
+      Code itself writes to it (permissions, /config); the unchanged check
+      compares parsed JSON so its reformatting doesn't trigger reinstalls,
+      and differing keys warn with the backup path. Plugins and marketplaces
+      are driven by the same settings file and applied via the claude CLI.
+      mcp/servers.jsonc is translated into claude/plugins/mcp/.mcp.json (our
+      own plugin under the patjlm-agents-config marketplace, gitignored;
+      secrets never inlined).
     - shared: agents/AGENTS.md (global instructions) → ~/.agents/AGENTS.md.
 
-Idempotent: skips destinations whose content already matches the render.
-Backs up differing destinations before overwriting.
+Idempotent: skips destinations whose content already matches the render,
+backs up differing destinations before overwriting, never writes through
+symlinks. One agent failing does not abort the others.
 """
+import argparse
 import json
 import re
 import shlex
 import shutil
 import subprocess
 import sys
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 import jsonschema
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
@@ -58,9 +62,124 @@ from json5 import loads as json5_loads
 REPO = Path(__file__).resolve().parent
 HOME = Path.home()
 
-# Per-agent override keys in mcp/servers.jsonc — install-time directives,
-# stripped before rendering into agent configs.
-AGENT_OVERRIDE_KEYS = {"claude"}
+JINJA = Environment(
+    loader=FileSystemLoader(str(REPO)),
+    undefined=StrictUndefined,
+    keep_trailing_newline=True,
+)
+
+
+# --- shared primitives: backup / link / write --------------------------------
+
+
+def backup(dest: Path, root: Path | None = None) -> Path:
+    """Copy dest to a timestamped .bak.
+
+    Next to dest by default, or mirroring the path under root/"backups"
+    when root is given — ~/.claude backups must not sit next to skills/
+    commands, where Claude Code would pick them up as real content.
+    """
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    if root is None:
+        backup_path = dest.with_name(f"{dest.name}.bak-{stamp}")
+    else:
+        backup_path = root / "backups" / f"{dest.relative_to(root)}.bak-{stamp}"
+        backup_path.parent.mkdir(parents=True, exist_ok=True)
+    if dest.is_dir() and not dest.is_symlink():
+        shutil.copytree(dest, backup_path)
+    else:
+        shutil.copy2(dest, backup_path)
+    print(f"backed up: {backup_path}")
+    return backup_path
+
+
+def link(dest: Path, source: Path, check_only: bool, root: Path | None = None) -> None:
+    """Symlink dest -> source (backups under root/"backups", see backup)."""
+    if dest.is_symlink() and dest.resolve() == source.resolve():
+        print(f"unchanged: {dest}")
+        return
+    if check_only:
+        print(f"would link: {dest} -> {source}")
+        return
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    if dest.is_symlink():
+        dest.unlink()
+        print(f"removed symlink: {dest}")
+    elif dest.exists():
+        backup(dest, root)
+        if dest.is_dir():
+            shutil.rmtree(dest)
+        else:
+            dest.unlink()
+    dest.symlink_to(source)
+    print(f"linked: {dest} -> {source}")
+
+
+def write_if_changed(
+    dest: Path,
+    text: str,
+    check_only: bool,
+    *,
+    root: Path | None = None,
+    parse: Callable[[str], Any] | None = None,
+    warn: Callable[[Any, Path | None], None] | None = None,
+    keep_backup: bool = True,
+) -> bool:
+    """Write text to dest unless it is already there. True = dest changes
+    (or would, in check mode).
+
+    Safety rules: never write through a symlink (unlink first), back up
+    differing destinations before overwriting (next to dest, or mirroring
+    under root/"backups" when root is given), chmod 0600. With parse, the
+    unchanged check compares parsed content (formatting-insensitive) and
+    warn(old, backup_path) — if given — runs before an overwrite, for drift
+    warnings (backup_path is None in check mode). keep_backup=False for
+    generated artifacts whose previous content is derivable from tracked
+    sources (e.g. the rendered .mcp.json).
+    """
+    old = None
+    same = False
+    if not dest.is_symlink() and dest.is_file():
+        raw = dest.read_text()
+        if parse is None:
+            same = raw == text
+        else:
+            try:
+                old = parse(raw)
+            except ValueError:
+                old = None  # unparseable — treat as differing
+            same = old is not None and old == parse(text)
+    if same:
+        print(f"unchanged: {dest}")
+        return False
+    if check_only:
+        if warn is not None and old is not None:
+            warn(old, None)
+        print(f"would install: {dest}")
+        return True
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    backup_path = None
+    if dest.is_symlink():
+        dest.unlink()
+        print(f"removed symlink: {dest}")
+    elif dest.exists() and keep_backup:
+        backup_path = backup(dest, root)
+    if warn is not None and old is not None:
+        warn(old, backup_path)
+    dest.write_text(text)
+    dest.chmod(0o600)
+    print(f"installed: {dest}")
+    return True
+
+
+# --- shared data: mcp/ -------------------------------------------------------
+
+
+# Per-agent override keys in mcp/servers.jsonc — must match the override
+# properties allowed by mcp/servers.schema.json. A block named after an
+# agent is deep-merged over the base server when rendering for that agent
+# (see for_agent); stripped from the base for everyone else.
+AGENTS = ("claude", "codex", "opencode")
 
 
 def load_mcp_servers() -> dict:
@@ -73,85 +192,88 @@ def load_mcp_servers() -> dict:
     return servers
 
 
-def validate_opencode(rendered: str) -> None:
-    """Syntax-check a rendered opencode.jsonc (JSONC parse)."""
-    json5_loads(rendered)  # raises on syntax errors
+def deep_merge(base: dict, override: dict) -> dict:
+    """dicts merge per-key; scalars and lists replace wholesale."""
+    merged = dict(base)
+    for key, value in override.items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = deep_merge(merged[key], value)
+        else:
+            merged[key] = value
+    return merged
 
 
-# destination -> {template, validate}
-TARGETS = {
-    HOME / ".config/opencode/opencode.jsonc": {
-        "template": "opencode/opencode.jsonc.j2",
-        "validate": validate_opencode,
-    },
-}
+def for_agent(server: dict, agent: str, *, keep_disabled: bool = False) -> dict | None:
+    """Server as rendered for agent, its override block applied. None = skip
+    (excluded via the override block, or disabled — unless keep_disabled,
+    for agents that understand the "disabled" key natively)."""
+    override = server.get(agent, {})
+    if (server.get("disabled") and not keep_disabled) or override.get("exclude"):
+        return None
+    base = {k: v for k, v in server.items() if k not in AGENTS}
+    override = {k: v for k, v in override.items() if k != "exclude"}
+    return deep_merge(base, override)
 
 
-def build_context(servers: dict) -> dict:
-    """Shared data injected into every template."""
-    # Strip per-agent override keys ("claude", ...) — they are install-time
-    # directives for install.py, not agent config.
-    clean = {
-        name: {k: v for k, v in server.items() if k not in AGENT_OVERRIDE_KEYS}
-        for name, server in servers.items()
-    }
-    # Pre-rendered JSON block at 2-space indent to match config style.
-    mcp_section = json.dumps({"servers": clean}, indent=2)
-    return {"mcp_section": mcp_section, "home": str(HOME)}
+# --- shared: agents/ ---------------------------------------------------------
 
 
-def install(dest: Path, rendered: str) -> None:
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    # Never write through a symlink (would hit the wrong target).
-    if dest.is_symlink():
-        dest.unlink()
-        print(f"removed symlink: {dest}")
-    if dest.exists() and dest.read_text() == rendered:
-        print(f"unchanged: {dest}")
-        return
-    backup(dest)
-    dest.write_text(rendered)
-    dest.chmod(0o600)
-    print(f"installed: {dest}")
+AGENTS_SRC = REPO / "agents"
 
 
-def backup(dest: Path, backup_dir: Path | None = None) -> Path:
-    """Copy dest to a timestamped .bak.
-
-    Next to dest by default, or under backup_dir (mirroring the path under
-    ~/.claude) when given — ~/.claude backups must not sit next to skills/
-    commands, where Claude Code would pick them up as real content.
-    """
-    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    if backup_dir is None:
-        backup_path = dest.with_name(f"{dest.name}.bak-{stamp}")
-    else:
-        backup_path = backup_dir / f"{dest.relative_to(CLAUDE_HOME)}.bak-{stamp}"
-        backup_path.parent.mkdir(parents=True, exist_ok=True)
-    if dest.is_dir() and not dest.is_symlink():
-        shutil.copytree(dest, backup_path)
-    else:
-        shutil.copy2(dest, backup_path)
-    print(f"backed up: {backup_path}")
-    return backup_path
+def install_shared(servers: dict, check_only: bool) -> bool:
+    """Cross-agent 1:1 content. The ~/.agents dir itself is managed by other
+    tooling (skills, .skill-lock.json) — only AGENTS.md is ours."""
+    link(HOME / ".agents" / "AGENTS.md", AGENTS_SRC / "AGENTS.md", check_only)
+    return True
 
 
-# --- claude/: 1:1 content symlinked into ~/.claude --------------------------
+# --- opencode ----------------------------------------------------------------
+
+
+OPENCODE_DEST = HOME / ".config/opencode/opencode.jsonc"
+
+
+def install_opencode(servers: dict, check_only: bool) -> bool:
+    """Render opencode/opencode.jsonc.j2 → ~/.config/opencode/opencode.jsonc."""
+    clean = {}
+    for name, server in servers.items():
+        rendered = for_agent(server, "opencode", keep_disabled=True)
+        if rendered is not None:
+            clean[name] = rendered
+    rendered = JINJA.get_template("opencode/opencode.jsonc.j2").render(
+        mcp_section=json.dumps({"servers": clean}, indent=2), home=str(HOME)
+    )
+    try:
+        json5_loads(rendered)  # syntax check (schema is V1-stale, see AGENTS.md)
+    except ValueError as e:
+        print(f"INVALID: {OPENCODE_DEST} — {e}", file=sys.stderr)
+        return False
+    print(f"valid: {OPENCODE_DEST}")
+    write_if_changed(OPENCODE_DEST, rendered, check_only)
+    return True
+
+
+# --- claude ------------------------------------------------------------------
+
 
 CLAUDE_SRC = REPO / "claude"
 CLAUDE_HOME = HOME / ".claude"
-CLAUDE_BACKUPS = CLAUDE_HOME / "backups"
-CLAUDE_SETTINGS_SRC = CLAUDE_SRC / "settings.jsonc"
+
+# Our own local marketplace + plugin delivering the shared MCP server list.
+# The marketplace lives in claude/plugins/ (declared in
+# claude/settings.jsonc.j2 as a directory source; its mcp plugin is enabled
+# like any other plugin).
+MCP_PLUGIN_TARGET = CLAUDE_SRC / "plugins" / "mcp" / ".mcp.json"
 
 
 def load_claude_settings() -> dict:
-    """Parse claude/settings.jsonc (json5 — comments allowed)."""
-    return json5_loads(CLAUDE_SETTINGS_SRC.read_text())
-
-# Our own local marketplace + plugin delivering the shared MCP server list.
-# The marketplace lives in claude/plugins/ (declared in claude/settings.json
-# as a directory source; its mcp plugin is enabled like any other plugin).
-MCP_PLUGIN_TARGET = CLAUDE_SRC / "plugins" / "mcp" / ".mcp.json"
+    """Render claude/settings.jsonc.j2 (comments + {{ home }}/{{ repo }}
+    substitution) and parse it (json5)."""
+    rendered = JINJA.get_template("claude/settings.jsonc.j2").render(
+        home=str(HOME), repo=str(REPO)
+    )
+    return json5_loads(rendered)
 
 
 def claude_symlink_map() -> dict[Path, Path]:
@@ -174,32 +296,6 @@ def claude_symlink_map() -> dict[Path, Path]:
     return links
 
 
-def install_symlink(
-    dest: Path, source: Path, check_only: bool, backup_dir: Path | None = CLAUDE_BACKUPS
-) -> None:
-    """Link dest -> source. Backups go under backup_dir (mirroring the path
-    under ~/.claude) or, when None, next to dest (for targets outside
-    ~/.claude, where CLAUDE_BACKUPS cannot mirror the path)."""
-    if dest.is_symlink() and dest.resolve() == source.resolve():
-        print(f"unchanged: {dest}")
-        return
-    if check_only:
-        print(f"would link: {dest} -> {source}")
-        return
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    if dest.is_symlink():
-        dest.unlink()
-        print(f"removed symlink: {dest}")
-    elif dest.exists():
-        backup(dest, backup_dir)
-        if dest.is_dir():
-            shutil.rmtree(dest)
-        else:
-            dest.unlink()
-    dest.symlink_to(source)
-    print(f"linked: {dest} -> {source}")
-
-
 def warn_settings_drift(
     dest_settings: dict, settings: dict, backup_path: Path | None
 ) -> None:
@@ -220,76 +316,45 @@ def warn_settings_drift(
         )
         print(
             f"WARNING: ~/.claude/settings.json differs from "
-            f"{CLAUDE_SETTINGS_SRC.relative_to(REPO)} in: {', '.join(diff)} — "
+            f"claude/settings.jsonc.j2 in: {', '.join(diff)} — "
             f"overwritten ({where}); merge those changes into the source to keep them"
         )
 
 
-def install_claude(check_only: bool) -> bool:
-    """Install claude/ files into ~/.claude. Returns False on validation error."""
+def install_claude(servers: dict, check_only: bool) -> bool:
+    """Install claude/ files into ~/.claude, then plugins (incl. the mcp
+    plugin). Returns False on validation error."""
     try:
         settings = load_claude_settings()
     except ValueError as e:
-        print(f"INVALID: {CLAUDE_SETTINGS_SRC} — {e}", file=sys.stderr)
+        print(f"INVALID: claude/settings.jsonc.j2 — {e}", file=sys.stderr)
         return False
-    print(f"valid: {CLAUDE_SETTINGS_SRC}")
+    print("valid: claude/settings.jsonc.j2")
     for dest, source in claude_symlink_map().items():
-        install_symlink(dest, source, check_only)
-    # settings.json: rendered from settings.jsonc and copied, never
+        link(dest, source, check_only, root=CLAUDE_HOME)
+
+    # settings.json: rendered from settings.jsonc.j2 and copied, never
     # symlinked — Claude Code writes to it (permissions, /config).
-    dest = CLAUDE_HOME / "settings.json"
-    dest_settings = None
-    if not dest.is_symlink() and dest.is_file():
-        try:
-            dest_settings = json.loads(dest.read_text())
-        except ValueError:
-            pass  # unparseable — treat as differing, backup + overwrite
-    if dest_settings == settings:
-        print(f"unchanged: {dest}")
-        return True
-    if check_only:
-        if dest_settings is not None:
-            warn_settings_drift(dest_settings, settings, None)
-        print(f"would install: {dest}")
-        return True
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    backup_path = None
-    if dest.is_symlink():
-        dest.unlink()
-        print(f"removed symlink: {dest}")
-    elif dest.exists():
-        backup_path = backup(dest, CLAUDE_BACKUPS)
-    if dest_settings is not None:
-        warn_settings_drift(dest_settings, settings, backup_path)
-    dest.write_text(json.dumps(settings, indent=2) + "\n")
-    dest.chmod(0o600)
-    print(f"installed: {dest}")
-    return True
 
+    def drift_warn(old: dict, backup_path: Path | None) -> None:
+        warn_settings_drift(old, settings, backup_path)
 
-# --- agents/: shared content, symlinked into ~/.agents -----------------------
-
-AGENTS_SRC = REPO / "agents"
-
-
-def install_shared(check_only: bool) -> None:
-    """Cross-agent 1:1 content. The ~/.agents dir itself is managed by other
-    tooling (skills, .skill-lock.json) — only AGENTS.md is ours."""
-    install_symlink(
-        HOME / ".agents" / "AGENTS.md",
-        AGENTS_SRC / "AGENTS.md",
+    write_if_changed(
+        CLAUDE_HOME / "settings.json",
+        json.dumps(settings, indent=2) + "\n",
         check_only,
-        backup_dir=None,  # not under ~/.claude — backup next to dest
+        root=CLAUDE_HOME,
+        parse=json.loads,
+        warn=drift_warn,
     )
+    return install_claude_plugins(servers, check_only)
 
 
-# --- claude plugins: driven by claude/settings.json ---------------------------
-# Marketplaces (extraKnownMarketplaces) and plugins (enabledPlugins, true =
-# install) both live in claude/settings.json — single source of truth.
+# --- claude plugins: driven by claude/settings.jsonc.j2 ----------------------
 
 
 def load_enabled_plugins() -> list[str]:
-    """Plugins to install: enabledPlugins=true in claude/settings.jsonc —
+    """Plugins to install: enabledPlugins=true in the settings template —
     the same list Claude Code uses to enable/disable."""
     enabled = load_claude_settings().get("enabledPlugins", {})
     if not isinstance(enabled, dict) or not all(
@@ -300,7 +365,7 @@ def load_enabled_plugins() -> list[str]:
 
 
 def load_marketplaces() -> list[str]:
-    """Marketplaces declared in claude/settings.jsonc (extraKnownMarketplaces)
+    """Marketplaces declared in the settings template (extraKnownMarketplaces)
     — the same place the claude CLI declares them. Returns add-able sources:
     github repos or local directory paths."""
     marketplaces = load_claude_settings().get("extraKnownMarketplaces", {})
@@ -333,7 +398,7 @@ def run_claude(args: list[str]) -> bool:
 def check_plugin_drift() -> None:
     """Warn about user-scope plugins installed on this machine but not
     managed by the repo (e.g. installed manually via the CLI) — they would
-    be lost on a fresh machine until added to claude/settings.json."""
+    be lost on a fresh machine until added to the settings template."""
     installed_path = CLAUDE_HOME / "plugins" / "installed_plugins.json"
     try:
         installed = json.loads(installed_path.read_text()).get("plugins", {})
@@ -344,7 +409,7 @@ def check_plugin_drift() -> None:
         if any(s.get("scope") == "user" for s in scopes) and plugin not in managed:
             print(
                 f"WARNING: {plugin} is installed (user scope) but not in "
-                "claude/settings.json enabledPlugins — add it there to keep it managed"
+                "claude/settings.jsonc.j2 enabledPlugins — add it there to keep it managed"
             )
 
 
@@ -367,20 +432,23 @@ def remove_mcp_duplicates() -> bool:
     return ok
 
 
-def install_plugins(check_only: bool) -> bool:
-    """Add marketplaces + install plugins, both driven by claude/settings.json
-    (extraKnownMarketplaces / enabledPlugins). The claude CLI commands are
-    idempotent no-ops when already present."""
+def apply_plugins(check_only: bool) -> bool:
+    """Add marketplaces + install plugins, both driven by the settings
+    template (extraKnownMarketplaces / enabledPlugins). The claude CLI
+    commands are idempotent no-ops when already present."""
     try:
         plugins = load_enabled_plugins()
         marketplaces = load_marketplaces()
     except ValueError as e:
-        print(f"INVALID: {CLAUDE_SETTINGS_SRC} — {e}", file=sys.stderr)
+        print(f"INVALID: claude/settings.jsonc.j2 — {e}", file=sys.stderr)
         return False
-    print(f"valid: {CLAUDE_SETTINGS_SRC} ({len(plugins)} plugins, "
+    print(f"valid: claude/settings.jsonc.j2 ({len(plugins)} plugins, "
           f"{len(marketplaces)} marketplaces)")
     if check_only:
         check_plugin_drift()
+        return True
+    if shutil.which("claude") is None:
+        print("skipping claude plugins: claude CLI not found on PATH")
         return True
     ok = True
     for source in marketplaces:
@@ -392,36 +460,7 @@ def install_plugins(check_only: bool) -> bool:
     return ok
 
 
-# --- mcp/servers.jsonc -> claude/mcp/.mcp.json (our "mcp" plugin) ------------
-
-# Per-agent overrides: a key like "claude" on a server is deep-merged over
-# the base server when rendering for that agent (dicts merge per-key,
-# scalars/lists replace); "exclude": true inside it skips the server for
-# that agent. Base values stay in opencode syntax; override values are
-# written in the target agent's syntax, so a claude override can e.g.
-# replace a {file:...} secret reference with a ${VAR} env ref.
-
-
-def deep_merge(base: dict, override: dict) -> dict:
-    """dicts merge per-key; scalars and lists replace wholesale."""
-    merged = dict(base)
-    for key, value in override.items():
-        if isinstance(value, dict) and isinstance(merged.get(key), dict):
-            merged[key] = deep_merge(merged[key], value)
-        else:
-            merged[key] = value
-    return merged
-
-
-def for_agent(server: dict, agent: str) -> dict | None:
-    """Server as rendered for agent, overrides applied. None = skip
-    (disabled, or excluded via the agent's override block)."""
-    override = server.get(agent, {})
-    if server.get("disabled") or override.get("exclude"):
-        return None
-    base = {k: v for k, v in server.items() if k not in AGENT_OVERRIDE_KEYS}
-    override = {k: v for k, v in override.items() if k != "exclude"}
-    return deep_merge(base, override)
+# --- claude mcp: mcp/servers.jsonc -> claude/plugins/mcp/.mcp.json -----------
 
 
 def expand_placeholder(value: str) -> str:
@@ -487,70 +526,65 @@ def render_mcp_plugin(servers: dict, check_only: bool) -> bool:
     Generated file — gitignored, never hand-edited (edit mcp/servers.jsonc
     + re-run install). Per-server claude overrides are applied (see
     for_agent); secret contents are never inlined at render time.
-    Installing/enabling the plugin is handled by install_plugins
+    Installing/enabling the plugin is handled by apply_plugins
     via enabledPlugins, like any other plugin."""
     try:
         rendered = mcp_json(servers)
-        json.loads(rendered)  # sanity: always valid JSON
-    except (ValueError, OSError) as e:
+    except ValueError as e:
         print(f"INVALID: mcp/servers.jsonc (claude rendering) — {e}", file=sys.stderr)
         return False
-    dest = MCP_PLUGIN_TARGET
-    if check_only:
-        print(f"valid: {dest} ({len(json.loads(rendered)['mcpServers'])} servers)")
-        return True
-    if dest.is_file() and dest.read_text() == rendered:
-        print(f"unchanged: {dest}")
-    else:
-        dest.write_text(rendered)
-        print(f"rendered: {dest}")
+    write_if_changed(MCP_PLUGIN_TARGET, rendered, check_only, keep_backup=False)
     return True
 
 
+def install_claude_plugins(servers: dict, check_only: bool) -> bool:
+    """The mcp plugin render + plugin application (--plugins shortcut)."""
+    ok = render_mcp_plugin(servers, check_only)
+    ok &= apply_plugins(check_only)
+    return ok
+
+
+# --- main --------------------------------------------------------------------
+
+
+INSTALLERS = (install_shared, install_opencode, install_claude)
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Render agent config templates, validate, and install them."
+    )
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="render + validate only, write nothing",
+    )
+    parser.add_argument(
+        "--plugins",
+        action="store_true",
+        help="only claude plugins (incl. the mcp plugin)",
+    )
+    return parser.parse_args()
+
+
 def main() -> int:
-    check_only = "--check" in sys.argv[1:]
-    plugins_only = "--plugins" in sys.argv[1:]
-    if plugins_only:
-        try:
-            servers = load_mcp_servers()
-        except (ValueError, jsonschema.ValidationError) as e:
-            print(f"INVALID: mcp/servers.jsonc — {e}", file=sys.stderr)
-            return 1
-        ok = render_mcp_plugin(servers, check_only)
-        ok &= install_plugins(check_only)
-        return 0 if ok else 1
+    args = parse_args()
     try:
         servers = load_mcp_servers()
     except (ValueError, jsonschema.ValidationError) as e:
         print(f"INVALID: mcp/servers.jsonc — {e}", file=sys.stderr)
         return 1
     print("valid: mcp/servers.jsonc")
-    env = Environment(
-        loader=FileSystemLoader(str(REPO)),
-        undefined=StrictUndefined,
-        keep_trailing_newline=True,
-    )
-    ctx = build_context(servers)
-    failed = False
-    for dest, spec in TARGETS.items():
-        rendered = env.get_template(spec["template"]).render(**ctx)
+    if args.plugins:
+        return 0 if install_claude_plugins(servers, args.check) else 1
+    ok = True
+    for installer in INSTALLERS:
         try:
-            spec["validate"](rendered)
-        except ValueError as e:
-            failed = True
-            print(f"INVALID: {dest} — {e}", file=sys.stderr)
-            continue
-        print(f"valid: {dest}")
-        if not check_only:
-            install(dest, rendered)
-    install_shared(check_only)
-    if not install_claude(check_only):
-        failed = True
-    if not render_mcp_plugin(servers, check_only):
-        failed = True
-    if not install_plugins(check_only):
-        failed = True
-    return 1 if failed else 0
+            ok &= installer(servers, args.check)
+        except Exception as e:  # one agent failing must not abort the others
+            ok = False
+            print(f"FAILED: {installer.__name__} — {e!r}", file=sys.stderr)
+    return 0 if ok else 1
 
 
 if __name__ == "__main__":
