@@ -3,6 +3,9 @@
   // A "*" can span spaces, so middle wildcards can match unintended commands if an
   // argument contains a verb-like word. See the git -C and gcloud rules below.
   "$schema": "https://opencode.ai/config.json",
+  // Default model: EnMaaS GLM, or openai/gpt-6-luna when enmaas is disabled
+  // (config.jsonc) — used for model + build/title/compaction/summary agents.
+  {% set default_model = "enmaas-free/rits/zai-org/glm-5-3" if enmaas_enabled else "openai/gpt-6-luna" %}
   "instructions": ["{{ home }}/.agents/AGENTS.md"],
   "permissions": [
     { "action": "*", "resource": "*", "effect": "ask" },
@@ -462,22 +465,22 @@
       }
     },
   },
-  "model": "enmaas-free/rits/zai-org/glm-5-3",
+  "model": "{{ default_model }}",
   "agents": {
     "plan": {
       "model": "openai/gpt-6-astra"
     },
     "build": {
-      "model": "enmaas-free/rits/zai-org/glm-5-3"
+      "model": "{{ default_model }}"
     },
     "title": {
-      "model": "enmaas-free/rits/zai-org/glm-5-3"
+      "model": "{{ default_model }}"
     },
     "compaction": {
-      "model": "enmaas-free/rits/zai-org/glm-5-3"
+      "model": "{{ default_model }}"
     },
     "summary": {
-      "model": "enmaas-free/rits/zai-org/glm-5-3"
+      "model": "{{ default_model }}"
     }
   },
   "commands": {},

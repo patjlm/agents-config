@@ -1,0 +1,9 @@
+{
+  // Repo-wide settings, rendered into every agent config at install time.
+  "enmaas": {
+    // false = EnMaaS is down: agents fall back to non-EnMaaS providers
+    // (claude: Vertex via gcloud ADC; opencode: openai; codex: default
+    // OpenAI/ChatGPT auth). Flip + re-run install.py to switch.
+    "enabled": true
+  }
+}

@@ -38,6 +38,13 @@ Install mechanisms (see AGENTS.md):
       own plugin under the patjlm-agents-config marketplace, gitignored;
       secrets never inlined).
     - shared: agents/AGENTS.md (global instructions) → ~/.agents/AGENTS.md.
+    - config.jsonc: repo-wide settings (enmaas.enabled), rendered into every
+      agent config — flip + re-run to switch agents between EnMaaS and their
+      fallbacks (claude: Vertex via gcloud ADC, opencode: openai, codex:
+      default OpenAI auth).
+    - codex: config.toml.j2 (+ per-model profile files) → ~/.codex/config.toml
+      (drift-aware — `codex mcp add` writes there), AGENTS.md symlink,
+      mcp/servers.jsonc → [mcp_servers.*] tables.
 
 Idempotent: skips destinations whose content already matches the render,
 backs up differing destinations before overwriting, never writes through
@@ -50,6 +57,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import tomllib
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
@@ -172,6 +180,28 @@ def write_if_changed(
     return True
 
 
+def warn_drift(
+    dest_label: str, source_label: str, old: dict, new: dict, backup_path: Path | None
+) -> None:
+    """The agent itself writes to its installed config (Claude Code:
+    permissions, /config; codex: `codex mcp add`). Warn which top-level
+    keys differ before we overwrite them, pointing at the backup holding
+    the previous content."""
+    diff = sorted(k for k in set(old) | set(new) if old.get(k) != new.get(k))
+    if not diff:
+        return
+    where = (
+        f"previous content in {backup_path}"
+        if backup_path
+        else "backed up before overwrite on install"
+    )
+    print(
+        f"WARNING: {dest_label} differs from {source_label} in: "
+        f"{', '.join(diff)} — overwritten ({where}); merge those changes "
+        "into the source to keep them"
+    )
+
+
 # --- shared data: mcp/ -------------------------------------------------------
 
 
@@ -190,6 +220,16 @@ def load_mcp_servers() -> dict:
         schema = json.load(f)
     jsonschema.validate(instance=servers, schema=schema)
     return servers
+
+
+def load_config() -> dict:
+    """Load and schema-check repo-wide settings (config.jsonc)."""
+    with open(REPO / "config.jsonc") as f:
+        config = json5_loads(f.read())
+    with open(REPO / "config.schema.json") as f:
+        schema = json.load(f)
+    jsonschema.validate(instance=config, schema=schema)
+    return config
 
 
 def deep_merge(base: dict, override: dict) -> dict:
@@ -221,9 +261,10 @@ def for_agent(server: dict, agent: str, *, keep_disabled: bool = False) -> dict 
 AGENTS_SRC = REPO / "agents"
 
 
-def install_shared(servers: dict, check_only: bool) -> bool:
-    """Cross-agent 1:1 content. The ~/.agents dir itself is managed by other
-    tooling (skills, .skill-lock.json) — only AGENTS.md is ours."""
+def install_shared(servers: dict, config: dict, check_only: bool) -> bool:
+    """Cross-agent 1:1 content (uniform INSTALLERS signature; servers and
+    config unused). The ~/.agents dir itself is managed by other tooling
+    (skills, .skill-lock.json) — only AGENTS.md is ours."""
     link(HOME / ".agents" / "AGENTS.md", AGENTS_SRC / "AGENTS.md", check_only)
     return True
 
@@ -234,7 +275,7 @@ def install_shared(servers: dict, check_only: bool) -> bool:
 OPENCODE_DEST = HOME / ".config/opencode/opencode.jsonc"
 
 
-def install_opencode(servers: dict, check_only: bool) -> bool:
+def install_opencode(servers: dict, config: dict, check_only: bool) -> bool:
     """Render opencode/opencode.jsonc.j2 → ~/.config/opencode/opencode.jsonc."""
     clean = {}
     for name, server in servers.items():
@@ -242,7 +283,9 @@ def install_opencode(servers: dict, check_only: bool) -> bool:
         if rendered is not None:
             clean[name] = rendered
     rendered = JINJA.get_template("opencode/opencode.jsonc.j2").render(
-        mcp_section=json.dumps({"servers": clean}, indent=2), home=str(HOME)
+        mcp_section=json.dumps({"servers": clean}, indent=2),
+        home=str(HOME),
+        enmaas_enabled=config["enmaas"]["enabled"],
     )
     try:
         json5_loads(rendered)  # syntax check (schema is V1-stale, see AGENTS.md)
@@ -267,11 +310,13 @@ CLAUDE_HOME = HOME / ".claude"
 MCP_PLUGIN_TARGET = CLAUDE_SRC / "plugins" / "mcp" / ".mcp.json"
 
 
-def load_claude_settings() -> dict:
+def load_claude_settings(config: dict) -> dict:
     """Render claude/settings.jsonc.j2 (comments + {{ home }}/{{ repo }}
     substitution) and parse it (json5)."""
     rendered = JINJA.get_template("claude/settings.jsonc.j2").render(
-        home=str(HOME), repo=str(REPO)
+        home=str(HOME),
+        repo=str(REPO),
+        enmaas_enabled=config["enmaas"]["enabled"],
     )
     return json5_loads(rendered)
 
@@ -296,36 +341,11 @@ def claude_symlink_map() -> dict[Path, Path]:
     return links
 
 
-def warn_settings_drift(
-    dest_settings: dict, settings: dict, backup_path: Path | None
-) -> None:
-    """Claude Code writes to ~/.claude/settings.json (granted permissions
-    land inside the existing "permissions" key, /config changes others).
-    Warn which top-level keys differ before we overwrite them, pointing at
-    the backup holding the previous content."""
-    diff = sorted(
-        k
-        for k in set(dest_settings) | set(settings)
-        if dest_settings.get(k) != settings.get(k)
-    )
-    if diff:
-        where = (
-            f"previous content in {backup_path}"
-            if backup_path
-            else "backed up before overwrite on install"
-        )
-        print(
-            f"WARNING: ~/.claude/settings.json differs from "
-            f"claude/settings.jsonc.j2 in: {', '.join(diff)} — "
-            f"overwritten ({where}); merge those changes into the source to keep them"
-        )
-
-
-def install_claude(servers: dict, check_only: bool) -> bool:
+def install_claude(servers: dict, config: dict, check_only: bool) -> bool:
     """Install claude/ files into ~/.claude, then plugins (incl. the mcp
     plugin). Returns False on validation error."""
     try:
-        settings = load_claude_settings()
+        settings = load_claude_settings(config)
     except ValueError as e:
         print(f"INVALID: claude/settings.jsonc.j2 — {e}", file=sys.stderr)
         return False
@@ -337,7 +357,9 @@ def install_claude(servers: dict, check_only: bool) -> bool:
     # symlinked — Claude Code writes to it (permissions, /config).
 
     def drift_warn(old: dict, backup_path: Path | None) -> None:
-        warn_settings_drift(old, settings, backup_path)
+        warn_drift(
+            "~/.claude/settings.json", "claude/settings.jsonc.j2", old, settings, backup_path
+        )
 
     write_if_changed(
         CLAUDE_HOME / "settings.json",
@@ -347,16 +369,16 @@ def install_claude(servers: dict, check_only: bool) -> bool:
         parse=json.loads,
         warn=drift_warn,
     )
-    return install_claude_plugins(servers, check_only)
+    return install_claude_plugins(servers, config, check_only)
 
 
 # --- claude plugins: driven by claude/settings.jsonc.j2 ----------------------
 
 
-def load_enabled_plugins() -> list[str]:
+def load_enabled_plugins(config: dict) -> list[str]:
     """Plugins to install: enabledPlugins=true in the settings template —
     the same list Claude Code uses to enable/disable."""
-    enabled = load_claude_settings().get("enabledPlugins", {})
+    enabled = load_claude_settings(config).get("enabledPlugins", {})
     if not isinstance(enabled, dict) or not all(
         isinstance(v, bool) for v in enabled.values()
     ):
@@ -364,11 +386,11 @@ def load_enabled_plugins() -> list[str]:
     return [plugin for plugin, on in enabled.items() if on]
 
 
-def load_marketplaces() -> list[str]:
+def load_marketplaces(config: dict) -> list[str]:
     """Marketplaces declared in the settings template (extraKnownMarketplaces)
     — the same place the claude CLI declares them. Returns add-able sources:
     github repos or local directory paths."""
-    marketplaces = load_claude_settings().get("extraKnownMarketplaces", {})
+    marketplaces = load_claude_settings(config).get("extraKnownMarketplaces", {})
     if not isinstance(marketplaces, dict):
         raise ValueError('"extraKnownMarketplaces" must be an object')
     sources = []
@@ -395,7 +417,7 @@ def run_claude(args: list[str]) -> bool:
     return True
 
 
-def check_plugin_drift() -> None:
+def check_plugin_drift(config: dict) -> None:
     """Warn about user-scope plugins installed on this machine but not
     managed by the repo (e.g. installed manually via the CLI) — they would
     be lost on a fresh machine until added to the settings template."""
@@ -404,7 +426,7 @@ def check_plugin_drift() -> None:
         installed = json.loads(installed_path.read_text()).get("plugins", {})
     except (OSError, ValueError):
         return  # nothing installed yet (fresh machine)
-    managed = set(load_claude_settings().get("enabledPlugins", {}))
+    managed = set(load_claude_settings(config).get("enabledPlugins", {}))
     for plugin, scopes in installed.items():
         if any(s.get("scope") == "user" for s in scopes) and plugin not in managed:
             print(
@@ -432,20 +454,20 @@ def remove_mcp_duplicates() -> bool:
     return ok
 
 
-def apply_plugins(check_only: bool) -> bool:
+def apply_plugins(config: dict, check_only: bool) -> bool:
     """Add marketplaces + install plugins, both driven by the settings
     template (extraKnownMarketplaces / enabledPlugins). The claude CLI
     commands are idempotent no-ops when already present."""
     try:
-        plugins = load_enabled_plugins()
-        marketplaces = load_marketplaces()
+        plugins = load_enabled_plugins(config)
+        marketplaces = load_marketplaces(config)
     except ValueError as e:
         print(f"INVALID: claude/settings.jsonc.j2 — {e}", file=sys.stderr)
         return False
     print(f"valid: claude/settings.jsonc.j2 ({len(plugins)} plugins, "
           f"{len(marketplaces)} marketplaces)")
     if check_only:
-        check_plugin_drift()
+        check_plugin_drift(config)
         return True
     if shutil.which("claude") is None:
         print("skipping claude plugins: claude CLI not found on PATH")
@@ -456,7 +478,7 @@ def apply_plugins(check_only: bool) -> bool:
     for plugin in plugins:
         ok &= run_claude(["plugin", "install", plugin])
     ok &= remove_mcp_duplicates()
-    check_plugin_drift()
+    check_plugin_drift(config)
     return ok
 
 
@@ -537,17 +559,225 @@ def render_mcp_plugin(servers: dict, check_only: bool) -> bool:
     return True
 
 
-def install_claude_plugins(servers: dict, check_only: bool) -> bool:
+def install_claude_plugins(servers: dict, config: dict, check_only: bool) -> bool:
     """The mcp plugin render + plugin application (--plugins shortcut)."""
     ok = render_mcp_plugin(servers, check_only)
-    ok &= apply_plugins(check_only)
+    ok &= apply_plugins(config, check_only)
     return ok
+
+
+# --- codex -------------------------------------------------------------------
+
+
+CODEX_HOME = HOME / ".codex"
+
+# Model profiles rendered as ~/.codex/<name>.config.toml, activated with
+# `codex --profile <name>` (profiles are separate files layered over
+# config.toml since codex 0.134): name -> (model, reasoning effort). config.toml
+# sets GLM's high effort globally, so each profile pins its model's own codex
+# default (as of codex 0.162) instead of inheriting it.
+CODEX_PROFILES = {
+    "gpt-luna": ("gpt-6-luna", "medium"),
+    "gpt-sol": ("gpt-6-sol", "medium"),
+    "gpt-astra": ("gpt-6-astra", "low"),
+}
+
+# {env:VAR} as a whole value (env entries in mcp/servers.jsonc)
+ENV_VALUE_RE = re.compile(r"\{env:([A-Za-z_][A-Za-z0-9_]*)\}")
+
+# The /model picker lists codex's model catalog, which knows nothing about
+# GLM — and model_catalog_json *replaces* the catalog rather than adding to
+# it. So with enmaas enabled we generate a catalog of exactly the EnMaaS
+# models, derived from the catalog bundled in the codex binary (entries
+# carry ~18K-char system prompts — too bulky and version-bound to commit).
+CODEX_CATALOG = CODEX_HOME / "model-catalog.json"
+CODEX_GLM_MODEL = "rits/zai-org/glm-5-3"
+# The GLM entry is derived from this bundled entry, but only keeps the fields
+# codex requires (found by elimination, codex 0.162) plus its system prompt.
+# Every GPT-specific capability flag is left out so codex falls back to plain
+# defaults — copying them breaks GLM's vLLM backend (supports_search_tool →
+# "Unsupported input item type: additional_tools", apply_patch_tool_type
+# freeform → "Custom tools with a grammar format are not supported").
+CODEX_GLM_TEMPLATE = "gpt-6-luna"
+CODEX_GLM_KEYS = (
+    "shell_type",
+    "visibility",
+    "supported_in_api",
+    "support_verbosity",
+    "truncation_policy",
+    "experimental_supported_tools",
+    "base_instructions",
+)
+
+
+def codex_model_catalog() -> str | None:
+    """JSON catalog of the EnMaaS models for codex's /model picker, or None
+    (with a warning) when it can't be generated — codex then keeps its
+    default catalog, minus GLM in the picker."""
+    if shutil.which("codex") is None:
+        print("WARNING: codex CLI not found — skipping model catalog (GLM won't be in /model)")
+        return None
+    result = subprocess.run(
+        ["codex", "--no-daemon", "debug", "models", "--bundled"],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    try:
+        bundled = json.loads(result.stdout)
+        by_slug = {m["slug"]: m for m in bundled["models"]}
+        template = by_slug[CODEX_GLM_TEMPLATE]
+        entries = [by_slug[model] for model, _ in CODEX_PROFILES.values()]
+        glm = {k: template[k] for k in CODEX_GLM_KEYS} | {
+            "slug": CODEX_GLM_MODEL,
+            "display_name": "GLM 5.3",
+            "description": "Hosted via EnMaaS",
+            "priority": 0,
+            # GLM runs at high effort (same as claude's modelSettings) — the
+            # only level offered, and the default
+            "default_reasoning_level": "high",
+            "supported_reasoning_levels": [
+                {
+                    "effort": "high",
+                    "description": "Greater reasoning depth for complex problems",
+                }
+            ],
+        }
+    except (ValueError, KeyError, TypeError) as e:
+        print(
+            f"WARNING: cannot derive codex model catalog from the bundled one "
+            f"({e!r}) — skipping (GLM won't be in /model)"
+        )
+        return None
+    # EnMaaS rejects service_tier=priority ("Fast") — advertise no tiers.
+    entries = [glm] + [
+        {k: v for k, v in e.items() if k not in ("service_tiers", "additional_speed_tiers")}
+        for e in entries
+    ]
+    return json.dumps({"models": entries}, indent=2) + "\n"
+
+
+def codex_mcp_toml(servers: dict) -> str:
+    """mcp/servers.jsonc → codex [mcp_servers.*] tables.
+
+    codex specifics (per codex docs, 2026-10): env values are literal (no
+    expansion) — {env:VAR} placeholders become env_vars entries forwarded
+    from codex's environment, renamed vars get a bash -c wrapper; http auth
+    is bearer_token_env_var (a "codex" override), codex cannot read
+    {file:...} header secrets; stdio cwd is native.
+    """
+    blocks = []
+    for name, server in servers.items():
+        merged = for_agent(server, "codex")
+        if merged is None:
+            continue
+        lines = [f"[mcp_servers.{json.dumps(name)}]"]
+        if merged["type"] == "remote":
+            lines.append(f"url = {json.dumps(merged['url'])}")
+            token_var = merged.get("bearer_token_env_var")
+            if token_var:
+                # replaces header auth — same token, from the environment
+                lines.append(f"bearer_token_env_var = {json.dumps(token_var)}")
+            elif merged.get("headers"):
+                raise ValueError(
+                    f"{name}: codex cannot read header secrets — add a "
+                    '"codex": {"bearer_token_env_var": "..."} override'
+                )
+        else:
+            command = list(merged["command"])
+            env_vars, renames, literals = [], {}, {}
+            for key, value in merged.get("environment", {}).items():
+                m = ENV_VALUE_RE.fullmatch(value)
+                if m:
+                    env_vars.append(m.group(1))
+                    if key != m.group(1):
+                        renames[key] = m.group(1)
+                else:
+                    literals[key] = value
+            if renames:
+                # env_vars are forwarded verbatim — rename via bash wrapper
+                exports = " ".join(
+                    f'{key}="${{{var}}}"' for key, var in renames.items()
+                )
+                joined = " ".join(shlex.quote(c) for c in command)
+                command = ["bash", "-c", f"export {exports} && exec {joined}"]
+            lines.append(f"command = {json.dumps(command[0])}")
+            lines.append(f"args = {json.dumps(command[1:])}")
+            if merged.get("cwd"):
+                lines.append(f"cwd = {json.dumps(merged['cwd'])}")
+            if literals:
+                lines.append(f"env = {json.dumps(literals)}")
+            if env_vars:
+                lines.append(f"env_vars = {json.dumps(env_vars)}")
+        blocks.append("\n".join(lines))
+    return "\n\n".join(blocks) + ("\n" if blocks else "")
+
+
+def install_codex(servers: dict, config: dict, check_only: bool) -> bool:
+    """Render codex/config.toml.j2 → ~/.codex/config.toml (+ model profile
+    files), symlink AGENTS.md. codex itself may write to config.toml
+    (`codex mcp add`) — the write is drift-aware, like claude settings."""
+    enmaas = config["enmaas"]["enabled"]
+    link(CODEX_HOME / "AGENTS.md", AGENTS_SRC / "AGENTS.md", check_only)
+    try:
+        mcp_toml = codex_mcp_toml(servers)
+    except ValueError as e:
+        print(f"INVALID: mcp/servers.jsonc (codex rendering) — {e}", file=sys.stderr)
+        return False
+    catalog = codex_model_catalog() if enmaas else None
+    changed = False
+    if catalog is not None:
+        # generated from the bundled catalog — derivable, no backup needed
+        changed |= write_if_changed(
+            CODEX_CATALOG, catalog, check_only, parse=json.loads, keep_backup=False
+        )
+    rendered = JINJA.get_template("codex/config.toml.j2").render(
+        enmaas_enabled=enmaas,
+        mcp_toml=mcp_toml,
+        home=str(HOME),
+        catalog_path=str(CODEX_CATALOG) if catalog is not None else None,
+    )
+    try:
+        new = tomllib.loads(rendered)
+    except ValueError as e:
+        print(f"INVALID: codex/config.toml.j2 — {e}", file=sys.stderr)
+        return False
+    print("valid: codex/config.toml.j2")
+
+    def drift_warn(old: dict, backup_path: Path | None) -> None:
+        warn_drift("~/.codex/config.toml", "codex/config.toml.j2", old, new, backup_path)
+
+    changed |= write_if_changed(
+        CODEX_HOME / "config.toml",
+        rendered,
+        check_only,
+        root=CODEX_HOME,
+        parse=tomllib.loads,
+        warn=drift_warn,
+    )
+    if enmaas:  # profiles point at the enmaas provider — none when disabled
+        for name, (model, effort) in CODEX_PROFILES.items():
+            text = JINJA.get_template("codex/profile.config.toml.j2").render(
+                name=name, model=model, effort=effort
+            )
+            changed |= write_if_changed(
+                CODEX_HOME / f"{name}.config.toml", text, check_only
+            )
+    if changed and not check_only:
+        # the managed app-server daemon loads config once, at startup —
+        # running it from here would break its socket (see docs), so just say so
+        print(
+            "NOTE: codex config changed — a running codex app-server daemon "
+            "keeps the old config; run `codex app-server daemon restart` "
+            "(interrupts running sessions) or restart codex to apply"
+        )
+    return True
 
 
 # --- main --------------------------------------------------------------------
 
 
-INSTALLERS = (install_shared, install_opencode, install_claude)
+INSTALLERS = (install_shared, install_opencode, install_claude, install_codex)
 
 
 def parse_args() -> argparse.Namespace:
@@ -575,12 +805,18 @@ def main() -> int:
         print(f"INVALID: mcp/servers.jsonc — {e}", file=sys.stderr)
         return 1
     print("valid: mcp/servers.jsonc")
+    try:
+        config = load_config()
+    except (ValueError, jsonschema.ValidationError) as e:
+        print(f"INVALID: config.jsonc — {e}", file=sys.stderr)
+        return 1
+    print("valid: config.jsonc")
     if args.plugins:
-        return 0 if install_claude_plugins(servers, args.check) else 1
+        return 0 if install_claude_plugins(servers, config, args.check) else 1
     ok = True
     for installer in INSTALLERS:
         try:
-            ok &= installer(servers, args.check)
+            ok &= installer(servers, config, args.check)
         except Exception as e:  # one agent failing must not abort the others
             ok = False
             print(f"FAILED: {installer.__name__} — {e!r}", file=sys.stderr)

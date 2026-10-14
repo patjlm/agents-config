@@ -4,26 +4,50 @@
   // comments) into ~/.claude/settings.json. The installed file is compared
   // as parsed JSON, so Claude Code's own reformatting doesn't trigger
   // reinstalls.
+{% if enmaas_enabled %}
   "apiKeyHelper": "cat ~/.secrets/enmaas-key",
+{% endif %}
   "env": {
     "ENABLE_TOOL_SEARCH": "auto:0",
     "ANTHROPIC_DEFAULT_HAIKU_MODEL": "claude-haiku-4-5",
     "ANTHROPIC_VERTEX_PROJECT_ID": "itpc-ca-0ae3c7024b",
+{% if enmaas_enabled %}
     "ANTHROPIC_BASE_URL": "https://api.enmaas.devshift.net",
     "CLAUDE_CODE_USE_VERTEX": "",
     "CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY": "1"
+{% else %}
+    // enmaas disabled (config.jsonc): Vertex via gcloud ADC
+    "CLAUDE_CODE_USE_VERTEX": "1"
+{% endif %}
   },
   // Claude Code writes granted permissions here ("always allow" etc.) —
   // installs warn about keys/values it holds that this source doesn't.
   "permissions": {},
+{% if enmaas_enabled %}
   "model": "rits/zai-org/glm-5-3[1m]",
+{% else %}
+  "model": "claude-sonnet-5-5",
+{% endif %}
   "modelPicker": {
     "options": [
+{% if enmaas_enabled %}
       {
         "model": "rits/zai-org/glm-5-3[1m]",
         "label": "GLM 5.3",
         "description": "Hosted via EnMaaS"
       }
+{% else %}
+      {
+        "model": "claude-sonnet-5-5",
+        "label": "Claude Sonnet 5.5",
+        "description": "Vertex via gcloud ADC"
+      },
+      {
+        "model": "claude-opus-5-5",
+        "label": "Claude Opus 5.5",
+        "description": "Vertex via gcloud ADC"
+      }
+{% endif %}
     ]
   },
   "hooks": {

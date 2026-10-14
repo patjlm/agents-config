@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Repo-wide settings rendered into every agent config",
+  "type": "object",
+  "properties": {
+    "enmaas": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" }
+      },
+      "required": ["enabled"],
+      "additionalProperties": false
+    }
+  },
+  "required": ["enmaas"],
+  "additionalProperties": false
+}
