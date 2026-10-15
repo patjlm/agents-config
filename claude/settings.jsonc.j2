@@ -32,6 +32,15 @@
     // enmaas disabled (config.jsonc): Vertex via gcloud ADC
     "CLAUDE_CODE_USE_VERTEX": "1"
 {% endif %}
+    // "Resume compaction" prompt ("This session is Xm old and uses N
+    // tokens. Compact it before continuing?"): fires when a session is
+    // resumed after ≥ this many idle minutes AND holds ≥ the token
+    // threshold below — regardless of the model's context window (fires
+    // at the 100K default even on GLM's 1M window). Undocumented env
+    // vars (claude code 2.1.300). Raise to be asked less often, or
+    // answer "Don't ask again" in the prompt itself.
+    // "CLAUDE_CODE_RESUME_THRESHOLD_MINUTES": "240",   // default 70
+    // "CLAUDE_CODE_RESUME_TOKEN_THRESHOLD": "400000"   // default 100000
   },
   // Claude Code writes granted permissions here ("always allow" etc.) —
   // installs warn about keys/values it holds that this source doesn't.
