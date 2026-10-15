@@ -317,6 +317,7 @@ def load_claude_settings(config: dict) -> dict:
         home=str(HOME),
         repo=str(REPO),
         enmaas_enabled=config["enmaas"]["enabled"],
+        rely_on_glm=config["enmaas"].get("rely_on_glm", False),
     )
     return json5_loads(rendered)
 

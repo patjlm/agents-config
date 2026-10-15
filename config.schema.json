@@ -6,7 +6,8 @@
     "enmaas": {
       "type": "object",
       "properties": {
-        "enabled": { "type": "boolean" }
+        "enabled": { "type": "boolean" },
+        "rely_on_glm": { "type": "boolean" }
       },
       "required": ["enabled"],
       "additionalProperties": false
