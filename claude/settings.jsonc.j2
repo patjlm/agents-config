@@ -23,6 +23,28 @@
   // Claude Code writes granted permissions here ("always allow" etc.) —
   // installs warn about keys/values it holds that this source doesn't.
   "permissions": {},
+  // Sandbox write allowlist for tooling caches — applies whenever the
+  // sandbox is on (enabled per-project, e.g. gcp-hcp-infra; this file
+  // deliberately doesn't set sandbox.enabled). Caches only, no broad home
+  // writes: ~/.terraform.d itself stays unwritable (credentials.tfrc.json
+  // lives there) — only its plugin-cache subdir (per ~/.terraformrc).
+  // Deliberately left out: ~/.cache/terraform (unused on this machine),
+  // poetry (absent), mise/asdf dirs (toolchain installs, not caches).
+  "sandbox": {
+    "filesystem": {
+      "allowWrite": [
+        "~/.cache/uv",
+        "~/.local/share/uv",
+        "~/.cache/go-build",
+        "~/go/pkg/mod",
+        "~/.terraform.d/plugin-cache",
+        "~/.cache/pip",
+        "~/.cargo/registry",
+        "~/.cargo/git",
+        "~/.cache/helm"
+      ]
+    }
+  },
 {% if enmaas_enabled %}
   "model": "rits/zai-org/glm-5-3[1m]",
 {% else %}
