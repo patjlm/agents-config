@@ -27,7 +27,7 @@ Validation:
 
 Install mechanisms (see AGENTS.md):
     - opencode: template render → ~/.config/opencode/opencode.jsonc.
-    - claude: 1:1 files (CLAUDE.md, statusline, agents/, commands/, hooks/,
+    - claude: 1:1 files (statusline, agents/, commands/, hooks/,
       skills/) → symlinks into ~/.claude. settings.jsonc.j2 is rendered to
       JSON and copied to ~/.claude/settings.json — never symlinked, Claude
       Code itself writes to it (permissions, /config); the unchanged check
@@ -37,14 +37,20 @@ Install mechanisms (see AGENTS.md):
       mcp/servers.jsonc is translated into claude/plugins/mcp/.mcp.json (our
       own plugin under the patjlm-agents-config marketplace, gitignored;
       secrets never inlined).
-    - shared: agents/AGENTS.md (global instructions) → ~/.agents/AGENTS.md.
+    - instructions: agents/AGENTS.md (common guidelines) + optional
+      <agent>/AGENTS.md (agent-specific additions) → combined and written
+      to each agent's global instructions file (~/.claude/CLAUDE.md,
+      ~/.codex/AGENTS.md, ~/.config/opencode/AGENTS.md) — generated, not
+      symlinked, so hand edits surface as drift (backups kept).
+      ~/.agents/AGENTS.md stays a symlink to the common file (convention
+      anchor; no agent reads it for instructions).
     - config.jsonc: repo-wide settings (enmaas.enabled), rendered into every
       agent config — flip + re-run to switch agents between EnMaaS and their
       fallbacks (claude: Vertex via gcloud ADC, opencode: openai, codex:
       default OpenAI auth).
     - codex: config.toml.j2 (+ per-model profile files) → ~/.codex/config.toml
-      (drift-aware — `codex mcp add` writes there), AGENTS.md symlink,
-      mcp/servers.jsonc → [mcp_servers.*] tables.
+      (drift-aware — `codex mcp add` writes there), AGENTS.md generation
+      (see instructions), mcp/servers.jsonc → [mcp_servers.*] tables.
 
 Idempotent: skips destinations whose content already matches the render,
 backs up differing destinations before overwriting, never writes through
@@ -261,6 +267,17 @@ def for_agent(server: dict, agent: str, *, keep_disabled: bool = False) -> dict 
 AGENTS_SRC = REPO / "agents"
 
 
+def instructions_text(agent: str) -> str:
+    """Global instructions for agent: agents/AGENTS.md (common guidelines)
+    + <agent>/AGENTS.md (agent-specific additions, optional), combined.
+    Keep both lean — they load into every session's context."""
+    common = (AGENTS_SRC / "AGENTS.md").read_text().rstrip()
+    extra = REPO / agent / "AGENTS.md"
+    if extra.is_file():
+        return f"{common}\n\n{extra.read_text().strip()}\n"
+    return f"{common}\n"
+
+
 def install_shared(servers: dict, config: dict, check_only: bool) -> bool:
     """Cross-agent 1:1 content (uniform INSTALLERS signature; servers and
     config unused). The ~/.agents dir itself is managed by other tooling
@@ -273,10 +290,15 @@ def install_shared(servers: dict, config: dict, check_only: bool) -> bool:
 
 
 OPENCODE_DEST = HOME / ".config/opencode/opencode.jsonc"
+OPENCODE_INSTRUCTIONS = HOME / ".config/opencode/AGENTS.md"
 
 
 def install_opencode(servers: dict, config: dict, check_only: bool) -> bool:
-    """Render opencode/opencode.jsonc.j2 → ~/.config/opencode/opencode.jsonc."""
+    """Render opencode/opencode.jsonc.j2 → ~/.config/opencode/opencode.jsonc
+    and generate AGENTS.md (common + opencode-specific guidelines)."""
+    write_if_changed(
+        OPENCODE_INSTRUCTIONS, instructions_text("opencode"), check_only
+    )
     clean = {}
     for name, server in servers.items():
         rendered = for_agent(server, "opencode", keep_disabled=True)
@@ -327,10 +349,11 @@ def claude_symlink_map() -> dict[Path, Path]:
 
     Top-level files and files under agents/commands/hooks are linked
     individually; skills are linked as whole directories (mirrors the
-    ~/.agents skills pattern). settings.json is handled separately (copy).
+    ~/.agents skills pattern). CLAUDE.md and settings.json are handled
+    separately (both generated, see install_claude).
     """
     links: dict[Path, Path] = {}
-    for name in ("CLAUDE.md", "statusline-command.sh"):
+    for name in ("statusline-command.sh",):
         links[CLAUDE_HOME / name] = CLAUDE_SRC / name
     for sub in ("agents", "commands", "hooks"):
         for src in sorted((CLAUDE_SRC / sub).iterdir()):
@@ -351,6 +374,14 @@ def install_claude(servers: dict, config: dict, check_only: bool) -> bool:
         print(f"INVALID: claude/settings.jsonc.j2 — {e}", file=sys.stderr)
         return False
     print("valid: claude/settings.jsonc.j2")
+    # CLAUDE.md: common + claude-specific guidelines, generated (never
+    # symlinked — a hand edit must surface as drift, not hit the repo).
+    write_if_changed(
+        CLAUDE_HOME / "CLAUDE.md",
+        instructions_text("claude"),
+        check_only,
+        root=CLAUDE_HOME,
+    )
     for dest, source in claude_symlink_map().items():
         link(dest, source, check_only, root=CLAUDE_HOME)
 
@@ -716,10 +747,13 @@ def codex_mcp_toml(servers: dict) -> str:
 
 def install_codex(servers: dict, config: dict, check_only: bool) -> bool:
     """Render codex/config.toml.j2 → ~/.codex/config.toml (+ model profile
-    files), symlink AGENTS.md. codex itself may write to config.toml
-    (`codex mcp add`) — the write is drift-aware, like claude settings."""
+    files), generate AGENTS.md (common + codex-specific guidelines). codex
+    itself may write to config.toml (`codex mcp add`) — the write is
+    drift-aware, like claude settings."""
     enmaas = config["enmaas"]["enabled"]
-    link(CODEX_HOME / "AGENTS.md", AGENTS_SRC / "AGENTS.md", check_only)
+    write_if_changed(
+        CODEX_HOME / "AGENTS.md", instructions_text("codex"), check_only
+    )
     try:
         mcp_toml = codex_mcp_toml(servers)
     except ValueError as e:
