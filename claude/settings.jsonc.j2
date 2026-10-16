@@ -22,12 +22,10 @@
     "CLAUDE_CODE_USE_VERTEX": "",
     "CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY": "1",
     // EnMaaS doesn't implement the server-side auto-mode safety review
-    // (safeguards field / safeguard_results) — fall back to claude code's
-    // own classifier requests instead.
-    "CLAUDE_CODE_AUTO_MODE_SERVER": "0"{% if rely_on_glm %},
-    // auto-mode classifier model. Undocumented env var (claude code
-    // 2.1.299) — re-verify (claude --debug + enmaas logs) after upgrades.
-    "CLAUDE_CODE_AUTO_MODE_MODEL": "rits/zai-org/glm-5-3"{% endif %}
+    // (safeguards field / safeguard_results) — verified: with =1 the extra
+    // fields are ignored and claude falls back to the same client-side
+    // classifier. Classifier details: see claude/auto-mode-classifier.md.
+    "CLAUDE_CODE_AUTO_MODE_SERVER": "0"
 {% else %}
     // enmaas disabled (config.jsonc): Vertex via gcloud ADC
     "CLAUDE_CODE_USE_VERTEX": "1"
