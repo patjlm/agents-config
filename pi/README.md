@@ -9,9 +9,11 @@ operational notes.
 
 The repo absorbed the previous hand-maintained `~/.pi/agent`:
 
-- `models.json`: the litellm local-proxy provider (key re-pointed from
-  the `~/.pi/agent/.litellm-key` symlink to the real file,
-  `~/.config/opencode/.litellm-key`).
+- `models.json`: the litellm local-proxy provider (key at
+  `~/.secrets/litellm-key`, like every other secret — the old setup read
+  it through a `~/.pi/agent/.litellm-key` symlink into
+  `~/.config/opencode`, which had been dangling since that file
+  disappeared).
 - `extensions/`: handoff, herdr-agent-state, question, questionnaire,
   status-line, todo (+ `.config.example.json` files and docs), linked
   1:1. The runtime-written `*.config.json` files next to them (e.g.
