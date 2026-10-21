@@ -1125,6 +1125,16 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="only claude plugins (incl. the mcp plugin)",
     )
+    parser.add_argument(
+        "agent",
+        nargs="?",
+        choices=[
+            f.__name__[len("install_"):]
+            for f in INSTALLERS
+            if f.__name__ != "install_shared"  # internal, not an agent
+        ],
+        help="install only this agent (default: all)",
+    )
     return parser.parse_args()
 
 
@@ -1144,8 +1154,11 @@ def main() -> int:
     print("valid: config.jsonc")
     if args.plugins:
         return 0 if install_claude_plugins(servers, config, args.check) else 1
+    selected = [
+        f for f in INSTALLERS if not args.agent or f.__name__ == f"install_{args.agent}"
+    ]
     ok = True
-    for installer in INSTALLERS:
+    for installer in selected:
         try:
             ok &= installer(servers, config, args.check)
         except Exception as e:  # one agent failing must not abort the others
