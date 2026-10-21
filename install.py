@@ -1,6 +1,6 @@
 # /// script
 # requires-python = ">=3.11"
-# dependencies = ["jinja2", "json5", "jsonschema"]
+# dependencies = ["jinja2", "json5", "jsonschema", "pyyaml"]
 # ///
 """Render agent config templates, validate, and install them.
 
@@ -40,8 +40,9 @@ Install mechanisms (see AGENTS.md):
     - instructions: agents/AGENTS.md (common guidelines) + optional
       <agent>/AGENTS.md (agent-specific additions) → combined and written
       to each agent's global instructions file (~/.claude/CLAUDE.md,
-      ~/.codex/AGENTS.md, ~/.config/opencode/AGENTS.md) — generated, not
-      symlinked, so hand edits surface as drift (backups kept).
+      ~/.codex/AGENTS.md, ~/.config/opencode/AGENTS.md,
+      ~/.omp/agent/AGENTS.md) — generated, not symlinked, so hand edits
+      surface as drift (backups kept).
       ~/.agents/AGENTS.md stays a symlink to the common file (convention
       anchor; no agent reads it for instructions).
     - config.jsonc: repo-wide settings (enmaas.enabled), rendered into every
@@ -51,6 +52,14 @@ Install mechanisms (see AGENTS.md):
     - codex: config.toml.j2 (+ per-model profile files) → ~/.codex/config.toml
       (drift-aware — `codex mcp add` writes there), AGENTS.md generation
       (see instructions), mcp/servers.jsonc → [mcp_servers.*] tables.
+    - omp: omp/models.yml.j2 → ~/.omp/agent/models.yml (EnMaaS providers,
+      apiKey read via !cat from the secret file at request time — command
+      form, no env vars), mcp/servers.jsonc → ~/.omp/agent/mcp.json
+      (placeholders become !commands, resolved by omp at connect time),
+      AGENTS.md generation (see instructions — without it omp falls back
+      to reading ~/.claude/CLAUDE.md), and a surgical modelRoles.default
+      edit in omp-owned config.yml (config.yml is written by omp itself,
+      /settings and `omp config set`, so it is never rendered wholesale).
 
 Idempotent: skips destinations whose content already matches the render,
 backs up differing destinations before overwriting, never writes through
@@ -70,6 +79,7 @@ from pathlib import Path
 from typing import Any
 
 import jsonschema
+import yaml
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 from json5 import loads as json5_loads
 
@@ -215,7 +225,7 @@ def warn_drift(
 # properties allowed by mcp/servers.schema.json. A block named after an
 # agent is deep-merged over the base server when rendering for that agent
 # (see for_agent); stripped from the base for everyone else.
-AGENTS = ("claude", "codex", "opencode")
+AGENTS = ("claude", "codex", "opencode", "omp")
 
 
 def load_mcp_servers() -> dict:
@@ -809,10 +819,165 @@ def install_codex(servers: dict, config: dict, check_only: bool) -> bool:
     return True
 
 
+# --- omp (oh-my-pi) -----------------------------------------------------------
+#
+# omp is a fork of pi with its own binary and config dir (~/.omp/agent).
+# Secrets use the command form (!cat/!printenv — omp runs values starting
+# with "!" as shell commands at request/connect time): no env-var magic
+# names, no inlined secret contents.
+
+
+OMP_HOME = HOME / ".omp" / "agent"
+OMP_GLM_PROVIDER = "enmaas-glm"
+OMP_GLM_MODEL = "rits/zai-org/glm-5-3"
+# enmaas-off fallback: direct OpenAI via the key file (same secret and
+# default model as opencode's fallback)
+OMP_FALLBACK_PROVIDER = "openai-key"
+OMP_FALLBACK_MODEL = "gpt-6-luna"
+
+# {env:VAR} / {file:PATH} placeholders (mcp/servers.jsonc opencode syntax)
+OMP_PLACEHOLDER_RE = re.compile(r"\{(env|file):([^}]+)\}")
+
+
+def omp_secret_value(value: str) -> str:
+    """opencode placeholder -> omp command value.
+
+    A placeholder as the whole value becomes a plain !cat/!printenv; one
+    embedded in a larger value (e.g. "Bearer {file:...}") becomes an echo
+    with command substitution — double-quoted so the substitution runs and
+    literal parts keep their spaces (breaks if the value itself contains
+    double quotes or dollar signs; ours don't).
+    """
+    whole = OMP_PLACEHOLDER_RE.fullmatch(value)
+    if whole:
+        kind, ref = whole.groups()
+        if kind == "file":
+            return "!cat " + shlex.quote(str(Path(ref).expanduser()))
+        return f"!printenv {ref}"
+    if not OMP_PLACEHOLDER_RE.search(value):
+        return value
+
+    def sub(m: re.Match) -> str:
+        kind, ref = m.group(1), m.group(2)
+        if kind == "file":
+            return "$(cat " + shlex.quote(str(Path(ref).expanduser())) + ")"
+        return f"$(printenv {ref})"
+
+    return '!echo "' + OMP_PLACEHOLDER_RE.sub(sub, value) + '"'
+
+
+def omp_mcp_json(servers: dict) -> str:
+    """mcp/servers.jsonc → omp mcp.json (same shape as pi's).
+
+    Notes: per-server opencode "timeout" has no documented omp equivalent
+    and is dropped; secrets translate to !commands (omp_secret_value).
+    """
+    entries = {}
+    for name, server in servers.items():
+        merged = for_agent(server, "omp")
+        if merged is None:
+            continue
+        if merged["type"] == "remote":
+            out = {"type": "http", "url": merged["url"]}
+            if "oauth" in merged:
+                out["oauth"] = merged["oauth"]
+            headers = {
+                k: omp_secret_value(v) for k, v in merged.get("headers", {}).items()
+            }
+            if headers:
+                out["headers"] = headers
+        else:
+            command = merged["command"]
+            out = {"type": "stdio", "command": command[0], "args": command[1:]}
+            if merged.get("cwd"):
+                out["cwd"] = merged["cwd"]
+            if merged.get("environment"):
+                out["env"] = {
+                    k: omp_secret_value(v)
+                    for k, v in merged["environment"].items()
+                }
+        entries[name] = out
+    return json.dumps({"mcpServers": entries}, indent=2) + "\n"
+
+
+def set_omp_default_model(config: dict, check_only: bool) -> None:
+    """Route omp's default model — EnMaaS GLM when enabled (config.jsonc),
+    direct OpenAI via the key file otherwise (same fallback as opencode) —
+    surgically.
+
+    config.yml is omp-owned (/settings, `omp config set` write to it), so
+    unlike the other generated configs we never render it wholesale: only
+    modelRoles.default changes, omp's own settings survive. The yaml
+    round-trip drops comments, which omp rewrites anyway.
+    """
+    path = OMP_HOME / "config.yml"
+    if path.is_symlink():
+        print(f"WARNING: {path} is a symlink — not writing through it")
+        return
+    data: dict = {}
+    if path.is_file():
+        try:
+            loaded = yaml.safe_load(path.read_text())
+        except yaml.YAMLError:
+            print(f"WARNING: {path} is not valid YAML — leaving it alone")
+            return
+        data = loaded if isinstance(loaded, dict) else {}
+    roles = data.get("modelRoles")
+    roles = roles if isinstance(roles, dict) else {}
+    current = roles.get("default")
+    if config["enmaas"]["enabled"]:
+        wanted = f"{OMP_GLM_PROVIDER}/{OMP_GLM_MODEL}"
+    else:
+        wanted = f"{OMP_FALLBACK_PROVIDER}/{OMP_FALLBACK_MODEL}"
+    if current == wanted:
+        print(f"unchanged: {path} (modelRoles.default)")
+        return
+    if check_only:
+        print(f"would set modelRoles.default = {wanted} in {path}")
+        return
+    if path.is_file():
+        backup(path)
+    roles["default"] = wanted
+    data["modelRoles"] = roles
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(yaml.dump(data, sort_keys=False))
+    print(f"installed: {path}")
+
+
+def install_omp(servers: dict, config: dict, check_only: bool) -> bool:
+    """Render omp/ templates → ~/.omp/agent: models.yml (EnMaaS providers,
+    key read via !cat at request time), mcp.json (from mcp/servers.jsonc,
+    placeholders → !commands), AGENTS.md (common guidelines — without it
+    omp falls back to reading ~/.claude/CLAUDE.md), plus the surgical
+    modelRoles.default edit in omp-owned config.yml."""
+    write_if_changed(OMP_HOME / "AGENTS.md", instructions_text("omp"), check_only)
+    models = JINJA.get_template("omp/models.yml.j2").render(home=str(HOME))
+    try:
+        yaml.safe_load(models)
+    except yaml.YAMLError as e:
+        print(f"INVALID: omp/models.yml.j2 — {e}", file=sys.stderr)
+        return False
+    print("valid: omp/models.yml.j2")
+    write_if_changed(
+        OMP_HOME / "models.yml", models, check_only, parse=yaml.safe_load
+    )
+    write_if_changed(
+        OMP_HOME / "mcp.json", omp_mcp_json(servers), check_only, parse=json.loads
+    )
+    set_omp_default_model(config, check_only)
+    return True
+
+
 # --- main --------------------------------------------------------------------
 
 
-INSTALLERS = (install_shared, install_opencode, install_claude, install_codex)
+INSTALLERS = (
+    install_shared,
+    install_opencode,
+    install_claude,
+    install_codex,
+    install_omp,
+)
 
 
 def parse_args() -> argparse.Namespace:

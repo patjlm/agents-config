@@ -1,0 +1,96 @@
+# Rendered by install.py from omp/models.yml.j2 — never hand-edit
+# ~/.omp/agent/models.yml (edit the template + re-run install).
+# EnMaaS sits under its own provider IDs so omp's built-in providers
+# (openai, anthropic, ...) stay unchanged — same convention as opencode.
+providers:
+  # GLM 5.3 over the completions API. Proven flags for GLM's vLLM backend:
+  # no developer role, penalties zeroed. The API key is read from the secret
+  # file at request time — command form; quoted, because a leading ! would
+  # otherwise parse as a YAML tag.
+  enmaas-glm:
+    baseUrl: https://api.enmaas.devshift.net/v1
+    apiKey: "!cat {{ home }}/.secrets/enmaas-key"
+    api: openai-completions
+    models:
+      - id: rits/zai-org/glm-5-3
+        name: GLM 5.3 (EnMaaS)
+        reasoning: true
+        input:
+          - text
+        contextWindow: 1000000
+        maxTokens: 65536
+        cost:
+          input: 0
+          output: 0
+          cacheRead: 0
+          cacheWrite: 0
+        compat:
+          supportsDeveloperRole: false
+        samplingParams:
+          frequency_penalty: 0
+          presence_penalty: 0
+  # gpt profile models over the responses API — the completions API rejects
+  # function tools with reasoning effort (same finding as opencode/codex).
+  # These entries are constructed from our opencode limits, not proven by
+  # the colleague config the GLM entry came from.
+  enmaas-openai:
+    baseUrl: https://api.enmaas.devshift.net/v1
+    apiKey: "!cat {{ home }}/.secrets/enmaas-key"
+    api: openai-responses
+    models:
+      - id: gpt-6-luna
+        name: GPT-6 Luna (EnMaaS)
+        reasoning: true
+        input:
+          - text
+        contextWindow: 1050000
+        maxTokens: 128000
+        cost:
+          input: 0
+          output: 0
+          cacheRead: 0
+          cacheWrite: 0
+      - id: gpt-6-sol
+        name: GPT-6 Sol (EnMaaS)
+        reasoning: true
+        input:
+          - text
+        contextWindow: 1050000
+        maxTokens: 128000
+        cost:
+          input: 0
+          output: 0
+          cacheRead: 0
+          cacheWrite: 0
+      - id: gpt-6-astra
+        name: GPT-6 Astra (EnMaaS)
+        reasoning: true
+        input:
+          - text
+        contextWindow: 1050000
+        maxTokens: 128000
+        cost:
+          input: 0
+          output: 0
+          cacheRead: 0
+          cacheWrite: 0
+  # Fallback when EnMaaS is down (config.jsonc enmaas.enabled=false) —
+  # direct OpenAI with the personal key file, mirroring opencode's
+  # fallback. install.py then routes modelRoles.default here.
+  openai-key:
+    baseUrl: https://api.openai.com/v1
+    apiKey: "!cat {{ home }}/.secrets/openai-api-key"
+    api: openai-responses
+    models:
+      - id: gpt-6-luna
+        name: GPT-6 Luna (OpenAI)
+        reasoning: true
+        input:
+          - text
+        contextWindow: 1050000
+        maxTokens: 128000
+        cost:
+          input: 0
+          output: 0
+          cacheRead: 0
+          cacheWrite: 0

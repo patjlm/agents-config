@@ -28,7 +28,8 @@
         "disabled": { "type": "boolean" },
         "claude": { "$ref": "#/$defs/agent_overrides" },
         "codex": { "$ref": "#/$defs/agent_overrides" },
-        "opencode": { "$ref": "#/$defs/agent_overrides" }
+        "opencode": { "$ref": "#/$defs/agent_overrides" },
+        "omp": { "$ref": "#/$defs/agent_overrides" }
       },
       "required": ["type", "url"],
       "additionalProperties": false
@@ -44,6 +45,7 @@
         "claude": { "$ref": "#/$defs/agent_overrides" },
         "codex": { "$ref": "#/$defs/agent_overrides" },
         "opencode": { "$ref": "#/$defs/agent_overrides" },
+        "omp": { "$ref": "#/$defs/agent_overrides" },
         "timeout": {
           "type": "object",
           "properties": {

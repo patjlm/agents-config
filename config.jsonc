@@ -3,7 +3,8 @@
   "enmaas": {
     // false = EnMaaS is down: agents fall back to non-EnMaaS providers
     // (claude: Vertex via gcloud ADC; opencode: openai; codex: default
-    // OpenAI/ChatGPT auth). Flip + re-run install.py to switch.
+    // OpenAI/ChatGPT auth; omp: openai via key file).
+    // Flip + re-run install.py to switch.
     "enabled": true,
     // true = GLM also covers claude code's cheap auxiliary usage (haiku
     // alias for background tasks + auto-mode classifier) instead of
