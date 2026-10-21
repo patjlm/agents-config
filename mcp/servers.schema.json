@@ -29,7 +29,8 @@
         "claude": { "$ref": "#/$defs/agent_overrides" },
         "codex": { "$ref": "#/$defs/agent_overrides" },
         "opencode": { "$ref": "#/$defs/agent_overrides" },
-        "omp": { "$ref": "#/$defs/agent_overrides" }
+        "omp": { "$ref": "#/$defs/agent_overrides" },
+        "pi": { "$ref": "#/$defs/agent_overrides" }
       },
       "required": ["type", "url"],
       "additionalProperties": false
@@ -46,6 +47,7 @@
         "codex": { "$ref": "#/$defs/agent_overrides" },
         "opencode": { "$ref": "#/$defs/agent_overrides" },
         "omp": { "$ref": "#/$defs/agent_overrides" },
+        "pi": { "$ref": "#/$defs/agent_overrides" },
         "timeout": {
           "type": "object",
           "properties": {

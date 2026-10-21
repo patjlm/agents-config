@@ -1,0 +1,183 @@
+{
+  "description": "Configuration reference for status-line.ts extension",
+  "note": "This extension is configured by editing the source code. No external config file approach.",
+  "configuration_method": "Edit extension source code or register custom status displays",
+  "current_behavior": {
+    "session_start": {
+      "status_key": "status-demo",
+      "text": "Ready",
+      "color": "dim"
+    },
+    "turn_start": {
+      "status_key": "status-demo",
+      "spinner": "●",
+      "text": " Turn {N}...",
+      "color": "accent"
+    },
+    "turn_end": {
+      "status_key": "status-demo",
+      "indicator": "✓",
+      "text": " Turn {N} complete",
+      "color": "success"
+    }
+  },
+  "configurable_elements": [
+    {
+      "element": "status_key",
+      "location": "lines 8, 14, 20",
+      "type": "string",
+      "current_value": "status-demo",
+      "purpose": "Identifier for the status line (allows multiple status displays)",
+      "example_custom_values": ["turn-counter", "agent-status", "progress"]
+    },
+    {
+      "element": "idle_text",
+      "location": "line 9",
+      "type": "string",
+      "current_value": "Ready",
+      "purpose": "Text displayed when idle/session starts",
+      "example_custom_values": ["Idle", "Waiting", "Ready...", "[session started]"]
+    },
+    {
+      "element": "spinner_character",
+      "location": "line 15",
+      "type": "string",
+      "current_value": "●",
+      "purpose": "Animation character shown during turn",
+      "example_custom_values": ["⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏", "⣾⣽⣻⢿⡿⣟⣯⣷", "▁▂▃▄▅▆▇█", "◐◓◑◒"]
+    },
+    {
+      "element": "turn_start_text",
+      "location": "line 16",
+      "type": "string",
+      "current_value": " Turn {N}...",
+      "purpose": "Text during turn execution",
+      "example_custom_values": [
+        " Processing turn {N}...",
+        " Agent running (turn {N})...",
+        " [Turn {N}] Working..."
+      ]
+    },
+    {
+      "element": "completion_indicator",
+      "location": "line 21",
+      "type": "string",
+      "current_value": "✓",
+      "purpose": "Character shown when turn completes",
+      "example_custom_values": ["✓", "✔", "✅", "→", "✰", "◉"]
+    },
+    {
+      "element": "turn_complete_text",
+      "location": "line 22",
+      "type": "string",
+      "current_value": " Turn {N} complete",
+      "purpose": "Text after turn completes",
+      "example_custom_values": [
+        " Turn {N} done",
+        " [Turn {N}] ✓",
+        " Completed turn {N}"
+      ]
+    },
+    {
+      "element": "color_scheme",
+      "location": "lines 9, 15, 21",
+      "type": "theme colors",
+      "current_value": ["dim", "accent", "success"],
+      "purpose": "Colors for each state",
+      "available_colors": [
+        "text - normal text",
+        "accent - highlighted",
+        "success - success state",
+        "warning - warning state",
+        "error - error state",
+        "dim - dimmed",
+        "muted - less prominent"
+      ]
+    }
+  ],
+  "how_to_customize": {
+    "method_1_edit_source": {
+      "description": "Modify the extension file directly",
+      "steps": [
+        "Edit ~/.pi/agent/extensions/status-line.ts",
+        "Change lines 8-24 with your custom values",
+        "Save file",
+        "Run 'pi /reload' to apply changes"
+      ]
+    },
+    "method_2_multiple_displays": {
+      "description": "Register multiple status displays with different keys",
+      "note": "Would require creating a new extension or modifying this one",
+      "concept": "Use different status_key values to show different information"
+    }
+  },
+  "customization_examples": {
+    "example_1_verbose": {
+      "description": "Show more detailed information",
+      "changes": {
+        "status_key": "agent-status",
+        "idle_text": "Idle - Ready for input",
+        "turn_start_text": " [Processing] Turn {N}...",
+        "spinner": "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏",
+        "completion_indicator": "✓",
+        "turn_complete_text": " [Done] Turn {N} complete"
+      }
+    },
+    "example_2_minimal": {
+      "description": "Show minimal status",
+      "changes": {
+        "status_key": "status",
+        "idle_text": "OK",
+        "turn_start_text": " Working...",
+        "spinner": "●",
+        "completion_indicator": "✓",
+        "turn_complete_text": " Done"
+      }
+    },
+    "example_3_emoji": {
+      "description": "Use emoji indicators",
+      "changes": {
+        "idle_text": "😴 Ready",
+        "spinner": "🔄",
+        "turn_start_text": " 🤖 Turn {N}...",
+        "completion_indicator": "✅",
+        "turn_complete_text": " ✅ Turn {N} done"
+      }
+    },
+    "example_4_ascii_animation": {
+      "description": "ASCII spinner animation",
+      "changes": {
+        "spinner": "⣾⣽⣻⢿⡿⣟⣯⣷",
+        "turn_start_text": " Turn {N}: processing",
+        "completion_indicator": "✰"
+      }
+    },
+    "example_5_include_model_info": {
+      "description": "Show current model in status",
+      "note": "Would require editing the extension to include ctx.model.id",
+      "concept": "Modify line 16 to append model information"
+    }
+  },
+  "events_that_trigger_updates": [
+    "session_start - sets idle status",
+    "turn_start - activates spinner and working text",
+    "turn_end - shows completion indicator"
+  ],
+  "keyboard_shortcut": "N/A - automatic display",
+  "visibility": "Footer of the terminal (status line area)",
+  "persistence": "Per session (resets when session starts)",
+  "styling": {
+    "available_theme_colors": {
+      "text": "Normal foreground color",
+      "accent": "Highlighted/accent color",
+      "success": "Success/positive state",
+      "warning": "Warning state",
+      "error": "Error state",
+      "dim": "Dimmed/subtle text",
+      "muted": "Less prominent text",
+      "selectedBg": "Background for selection",
+      "borderMuted": "Subtle borders"
+    },
+    "usage": "theme.fg(colorName, text)"
+  }
+}

@@ -4,12 +4,12 @@ Personal repo: AI agent configurations + scripts to install them automatically.
 
 ## Supported agents
 
-- Claude Code, Codex CLI, OpenCode, oh-my-pi (`omp` — a fork of pi with its own binary and `~/.omp` config dir).
-- Pi itself may be added later (separate config dir + formats — omp is a fork, not a wrapper over pi). When adding one: new per-agent folder + installer entry; do not break existing agents' installs.
+- Claude Code, Codex CLI, OpenCode, oh-my-pi (`omp` — a fork of pi with its own binary and `~/.omp` config dir), and pi itself (`~/.pi/agent`).
+- When adding another: new per-agent folder + installer entry; do not break existing agents' installs.
 
 ## Layout
 
-- One folder per agent (`opencode/`, `claude/`, `codex/`, `omp/`): holds that agent's Jinja2 templates (`.j2`) and other agent-specific files.
+- One folder per agent (`opencode/`, `claude/`, `codex/`, `omp/`, `pi/`): holds that agent's Jinja2 templates (`.j2`) and other agent-specific files.
 - `agents/`: shared cross-agent content — `agents/AGENTS.md` holds the common guidelines; each agent folder may add `<agent>/AGENTS.md` with agent-specific rules. `install.py` combines both into each agent's global instructions file (`~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md`, `~/.config/opencode/AGENTS.md`); `~/.agents/AGENTS.md` symlinks to the common file. Keep both files lean — they load into every session's context. Agent-specific rules never go in `agents/AGENTS.md`.
 - `mcp/servers.jsonc`: canonical shared MCP server list — single source of truth, rendered into every agent config. More shared data dirs may come (e.g. models).
 - `config.jsonc`: repo-wide settings (`enmaas.enabled`, `enmaas.rely_on_glm`), schema-checked against `config.schema.json` and rendered into every agent config — flip + re-run install to switch agents between EnMaaS and their fallbacks (claude: Vertex via gcloud ADC; opencode: openai; codex: default OpenAI auth). `rely_on_glm` additionally routes claude code's cheap auxiliary usage (haiku alias + auto-mode classifier) to GLM — flip it off when GLM is unavailable but EnMaaS still serves the claude models.
@@ -38,6 +38,11 @@ Personal repo: AI agent configurations + scripts to install them automatically.
   - `omp/models.yml.j2` renders to `~/.omp/agent/models.yml` — EnMaaS providers under their own IDs (built-in `openai`/`anthropic` stay unchanged). The API key is read from the secret file at request time via the command form (`!cat` — quoted, a leading `!` would otherwise parse as a YAML tag); no env vars. `mcp/servers.jsonc` translates to `~/.omp/agent/mcp.json`: `{file:PATH}` → `!cat PATH`, `{env:VAR}` → `!printenv VAR` (omp runs `!` values as shell commands at connect time; `Bearer {file:...}`-style headers become `!echo "Bearer $(cat ...)"`).
   - `~/.omp/agent/AGENTS.md` is generated (common guidelines) — without it omp falls back to reading `~/.claude/CLAUDE.md` (foreign-config discovery).
   - `~/.omp/agent/config.yml` is omp-owned (`/settings`, `omp config set` write there) — never rendered wholesale; `install.py` only sets `modelRoles.default` surgically (EnMaaS GLM when enabled, the `openai-key` fallback provider when disabled — same key file and default model as opencode's fallback), preserving omp's own settings.
+- pi specifics:
+  - `pi/models.json.j2` renders to `~/.pi/agent/models.json` — EnMaaS providers (same set as omp) plus the litellm local proxy carried over from the pre-repo setup; apiKey via `!cat` at request time (unlike omp, a bare apiKey value in pi is a literal, not an env-var name). `mcp/servers.jsonc` translates to `~/.pi/agent/mcp.json` via the shared pi-family `!command` translation (needs pi 1.x — built-in MCP).
+  - `pi/settings.json.j2` renders to `~/.pi/agent/settings.json`, drift-aware like claude settings (pi writes theme, packages, changelog version there). `defaultProvider`/`defaultModel` switch with `enmaas.enabled`; the disabled fallback is the vertex provider (pi-vertex extension, gcloud ADC) — same fallback family as claude, so pi has no openai-key provider.
+  - `pi/extensions/` and `pi/settings/` (pi-vertex) hold the addons gathered from the pre-repo setup, symlinked 1:1 into `~/.pi/agent/` (individually, so runtime-written `*.config.json` files next to the extensions stay unmanaged). Extension backups go under `~/.pi/agent/backups/` — a `.bak` inside `extensions/` would be discovered as an extension.
+  - The installer never touches `~/.pi/agent/{auth.json,sessions,run-history.jsonl,models-store.json,bin,npm}` — pi-owned/user data.
 
 ## Python scripts
 

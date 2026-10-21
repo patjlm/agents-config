@@ -1,0 +1,31 @@
+{
+  "description": "Configuration example for todo.ts extension",
+  "note": "This is a REFERENCE FILE showing customizable values. Edit the todo.ts file directly for actual configuration.",
+  "customizable_elements": {
+    "emptyMessage": {
+      "location": "line 79 in todo.ts",
+      "type": "string",
+      "current_value": "No todos yet. Ask the agent to add some!",
+      "description": "Message displayed when todo list is empty"
+    },
+    "maxItemsInCollapsedView": {
+      "location": "line 97 in todo.ts",
+      "type": "number",
+      "current_value": 5,
+      "description": "Number of todo items to show when collapsed (rest hidden with '... N more')"
+    },
+    "showCompletionRatio": {
+      "location": "line 101-102 in todo.ts",
+      "type": "boolean",
+      "current_value": true,
+      "description": "Whether to display 'N/M completed' ratio in the UI"
+    }
+  },
+  "state_management": {
+    "persisted": true,
+    "persistence_method": "Session entries (automatic)",
+    "survives_restart": true,
+    "correct_on_branches": true,
+    "external_file_storage": false
+  }
+}

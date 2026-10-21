@@ -1,0 +1,51 @@
+{
+  "description": "Configuration reference for question.ts extension",
+  "note": "This extension uses TOOL PARAMETERS for configuration, not config files. Configure when LLM calls the tool.",
+  "configuration_method": "Tool parameters (LLM-driven)",
+  "tool_parameters": {
+    "question": {
+      "type": "string",
+      "required": true,
+      "example": "Which framework do you prefer?",
+      "description": "The question text displayed to the user"
+    },
+    "options": {
+      "type": "array of objects",
+      "required": true,
+      "description": "Available choices for the user",
+      "object_structure": {
+        "label": {
+          "type": "string",
+          "required": true,
+          "example": "React",
+          "description": "Display text for the option"
+        },
+        "description": {
+          "type": "string",
+          "required": false,
+          "example": "Component-based with hooks",
+          "description": "Optional help text shown below label"
+        }
+      }
+    }
+  },
+  "example_usage": {
+    "description": "How LLM invokes this tool",
+    "code": "question({ question: 'Choose an option', options: [{ label: 'Option A', description: 'First choice' }, { label: 'Option B' }] })"
+  },
+  "return_value": {
+    "question": "string - the original question",
+    "options": "string[] - the original options",
+    "answer": "string | null - user's selection or custom text",
+    "wasCustom": "boolean - true if user typed a custom answer"
+  },
+  "keyboard_shortcuts": {
+    "up_down_arrow": "Navigate options",
+    "enter": "Select current option or submit custom answer",
+    "escape": "Cancel and return null",
+    "when_in_custom_mode": {
+      "escape": "Return to options list",
+      "enter": "Submit custom answer"
+    }
+  }
+}

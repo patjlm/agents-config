@@ -60,6 +60,13 @@ Install mechanisms (see AGENTS.md):
       to reading ~/.claude/CLAUDE.md), and a surgical modelRoles.default
       edit in omp-owned config.yml (config.yml is written by omp itself,
       /settings and `omp config set`, so it is never rendered wholesale).
+    - pi: pi/models.json.j2 → ~/.pi/agent/models.json (EnMaaS providers +
+      litellm proxy, apiKey via !cat), pi/settings.json.j2 →
+      ~/.pi/agent/settings.json (drift-aware — pi writes theme, packages,
+      changelog version there), mcp.json (shared pi-family translation,
+      needs pi 1.x), AGENTS.md generation, and 1:1 symlinks for
+      extensions/ + settings/ (gathered from the pre-repo setup;
+      runtime-written *.config.json files stay unmanaged).
 
 Idempotent: skips destinations whose content already matches the render,
 backs up differing destinations before overwriting, never writes through
@@ -225,7 +232,7 @@ def warn_drift(
 # properties allowed by mcp/servers.schema.json. A block named after an
 # agent is deep-merged over the base server when rendering for that agent
 # (see for_agent); stripped from the base for everyone else.
-AGENTS = ("claude", "codex", "opencode", "omp")
+AGENTS = ("claude", "codex", "opencode", "omp", "pi")
 
 
 def load_mcp_servers() -> dict:
@@ -819,6 +826,80 @@ def install_codex(servers: dict, config: dict, check_only: bool) -> bool:
     return True
 
 
+# --- pi family: shared mcp translation (pi, omp) ------------------------------
+#
+# pi and omp (its fork) share the mcp.json shape, and both resolve values
+# starting with "!" as shell commands at connect time — secrets never
+# inline, no env-var magic names.
+
+
+# {env:VAR} / {file:PATH} placeholders (mcp/servers.jsonc opencode syntax)
+PI_PLACEHOLDER_RE = re.compile(r"\{(env|file):([^}]+)\}")
+
+
+def pi_secret_value(value: str) -> str:
+    """opencode placeholder -> pi-family command value.
+
+    A placeholder as the whole value becomes a plain !cat/!printenv; one
+    embedded in a larger value (e.g. "Bearer {file:...}") becomes an echo
+    with command substitution — double-quoted so the substitution runs and
+    literal parts keep their spaces (breaks if the value itself contains
+    double quotes or dollar signs; ours don't).
+    """
+    whole = PI_PLACEHOLDER_RE.fullmatch(value)
+    if whole:
+        kind, ref = whole.groups()
+        if kind == "file":
+            return "!cat " + shlex.quote(str(Path(ref).expanduser()))
+        return f"!printenv {ref}"
+    if not PI_PLACEHOLDER_RE.search(value):
+        return value
+
+    def sub(m: re.Match) -> str:
+        kind, ref = m.group(1), m.group(2)
+        if kind == "file":
+            return "$(cat " + shlex.quote(str(Path(ref).expanduser())) + ")"
+        return f"$(printenv {ref})"
+
+    return '!echo "' + PI_PLACEHOLDER_RE.sub(sub, value) + '"'
+
+
+def pi_mcp_json(servers: dict, agent: str) -> str:
+    """mcp/servers.jsonc → pi-family mcp.json, the agent's override block
+    applied (see for_agent).
+
+    Notes: per-server opencode "timeout" has no documented pi/omp
+    equivalent and is dropped; secrets translate to !commands
+    (pi_secret_value).
+    """
+    entries = {}
+    for name, server in servers.items():
+        merged = for_agent(server, agent)
+        if merged is None:
+            continue
+        if merged["type"] == "remote":
+            out = {"type": "http", "url": merged["url"]}
+            if "oauth" in merged:
+                out["oauth"] = merged["oauth"]
+            headers = {
+                k: pi_secret_value(v) for k, v in merged.get("headers", {}).items()
+            }
+            if headers:
+                out["headers"] = headers
+        else:
+            command = merged["command"]
+            out = {"type": "stdio", "command": command[0], "args": command[1:]}
+            if merged.get("cwd"):
+                out["cwd"] = merged["cwd"]
+            if merged.get("environment"):
+                out["env"] = {
+                    k: pi_secret_value(v)
+                    for k, v in merged["environment"].items()
+                }
+        entries[name] = out
+    return json.dumps({"mcpServers": entries}, indent=2) + "\n"
+
+
 # --- omp (oh-my-pi) -----------------------------------------------------------
 #
 # omp is a fork of pi with its own binary and config dir (~/.omp/agent).
@@ -834,70 +915,6 @@ OMP_GLM_MODEL = "rits/zai-org/glm-5-3"
 # default model as opencode's fallback)
 OMP_FALLBACK_PROVIDER = "openai-key"
 OMP_FALLBACK_MODEL = "gpt-6-luna"
-
-# {env:VAR} / {file:PATH} placeholders (mcp/servers.jsonc opencode syntax)
-OMP_PLACEHOLDER_RE = re.compile(r"\{(env|file):([^}]+)\}")
-
-
-def omp_secret_value(value: str) -> str:
-    """opencode placeholder -> omp command value.
-
-    A placeholder as the whole value becomes a plain !cat/!printenv; one
-    embedded in a larger value (e.g. "Bearer {file:...}") becomes an echo
-    with command substitution — double-quoted so the substitution runs and
-    literal parts keep their spaces (breaks if the value itself contains
-    double quotes or dollar signs; ours don't).
-    """
-    whole = OMP_PLACEHOLDER_RE.fullmatch(value)
-    if whole:
-        kind, ref = whole.groups()
-        if kind == "file":
-            return "!cat " + shlex.quote(str(Path(ref).expanduser()))
-        return f"!printenv {ref}"
-    if not OMP_PLACEHOLDER_RE.search(value):
-        return value
-
-    def sub(m: re.Match) -> str:
-        kind, ref = m.group(1), m.group(2)
-        if kind == "file":
-            return "$(cat " + shlex.quote(str(Path(ref).expanduser())) + ")"
-        return f"$(printenv {ref})"
-
-    return '!echo "' + OMP_PLACEHOLDER_RE.sub(sub, value) + '"'
-
-
-def omp_mcp_json(servers: dict) -> str:
-    """mcp/servers.jsonc → omp mcp.json (same shape as pi's).
-
-    Notes: per-server opencode "timeout" has no documented omp equivalent
-    and is dropped; secrets translate to !commands (omp_secret_value).
-    """
-    entries = {}
-    for name, server in servers.items():
-        merged = for_agent(server, "omp")
-        if merged is None:
-            continue
-        if merged["type"] == "remote":
-            out = {"type": "http", "url": merged["url"]}
-            if "oauth" in merged:
-                out["oauth"] = merged["oauth"]
-            headers = {
-                k: omp_secret_value(v) for k, v in merged.get("headers", {}).items()
-            }
-            if headers:
-                out["headers"] = headers
-        else:
-            command = merged["command"]
-            out = {"type": "stdio", "command": command[0], "args": command[1:]}
-            if merged.get("cwd"):
-                out["cwd"] = merged["cwd"]
-            if merged.get("environment"):
-                out["env"] = {
-                    k: omp_secret_value(v)
-                    for k, v in merged["environment"].items()
-                }
-        entries[name] = out
-    return json.dumps({"mcpServers": entries}, indent=2) + "\n"
 
 
 def set_omp_default_model(config: dict, check_only: bool) -> None:
@@ -962,9 +979,87 @@ def install_omp(servers: dict, config: dict, check_only: bool) -> bool:
         OMP_HOME / "models.yml", models, check_only, parse=yaml.safe_load
     )
     write_if_changed(
-        OMP_HOME / "mcp.json", omp_mcp_json(servers), check_only, parse=json.loads
+        OMP_HOME / "mcp.json", pi_mcp_json(servers, "omp"), check_only, parse=json.loads
     )
     set_omp_default_model(config, check_only)
+    return True
+
+
+# --- pi ------------------------------------------------------------------------
+
+
+PI_HOME = HOME / ".pi" / "agent"
+PI_GLM_PROVIDER = "enmaas-glm"
+PI_GLM_MODEL = "rits/zai-org/glm-5-3"
+# enmaas-off fallback: the vertex provider (pi-vertex extension package,
+# gcloud ADC) with the pre-repo default model — same fallback family as
+# claude, so pi needs no openai-key provider (unlike omp)
+PI_FALLBACK_PROVIDER = "vertex"
+PI_FALLBACK_MODEL = "claude-haiku-4-5"
+
+
+def pi_symlink_map() -> dict[Path, Path]:
+    """dest in ~/.pi/agent -> source file in the repo.
+
+    Extensions link individually (like claude agents/commands/hooks) so
+    the runtime-written *.config.json files stay unmanaged next to them;
+    pi-vertex extension settings link 1:1. Backups must go under
+    PI_HOME/backups — a .bak next to an extension would be discovered.
+    """
+    links: dict[Path, Path] = {}
+    for sub in ("extensions", "settings"):
+        for src in sorted((REPO / "pi" / sub).iterdir()):
+            if src.is_file():
+                links[PI_HOME / sub / src.name] = src
+    return links
+
+
+def install_pi(servers: dict, config: dict, check_only: bool) -> bool:
+    """Render pi/ templates → ~/.pi/agent: models.json (EnMaaS providers
+    + the carried-over litellm proxy, apiKey via !cat at request time),
+    settings.json (drift-aware — pi itself writes theme, packages,
+    changelog version there), mcp.json (shared pi-family translation;
+    needs pi 1.x), AGENTS.md (common guidelines), and 1:1 symlinks for
+    extensions + pi-vertex settings (gathered from the pre-repo setup)."""
+    write_if_changed(PI_HOME / "AGENTS.md", instructions_text("pi"), check_only)
+    for dest, source in pi_symlink_map().items():
+        link(dest, source, check_only, root=PI_HOME)
+    models = JINJA.get_template("pi/models.json.j2").render(home=str(HOME))
+    try:
+        json.loads(models)
+    except ValueError as e:
+        print(f"INVALID: pi/models.json.j2 — {e}", file=sys.stderr)
+        return False
+    print("valid: pi/models.json.j2")
+    write_if_changed(
+        PI_HOME / "models.json", models, check_only, parse=json.loads
+    )
+    settings = JINJA.get_template("pi/settings.json.j2").render(
+        enmaas_enabled=config["enmaas"]["enabled"]
+    )
+    try:
+        new = json.loads(settings)
+    except ValueError as e:
+        print(f"INVALID: pi/settings.json.j2 — {e}", file=sys.stderr)
+        return False
+    print("valid: pi/settings.json.j2")
+
+    def drift_warn(old: dict, backup_path: Path | None) -> None:
+        warn_drift(
+            "~/.pi/agent/settings.json", "pi/settings.json.j2", old, new, backup_path
+        )
+
+    write_if_changed(
+        PI_HOME / "settings.json",
+        settings,
+        check_only,
+        root=PI_HOME,
+        parse=json.loads,
+        warn=drift_warn,
+    )
+    write_if_changed(
+        PI_HOME / "mcp.json", pi_mcp_json(servers, "pi"), check_only, parse=json.loads
+    )
     return True
 
 
@@ -977,6 +1072,7 @@ INSTALLERS = (
     install_claude,
     install_codex,
     install_omp,
+    install_pi,
 )
 
 

@@ -1,0 +1,86 @@
+{
+  "description": "Configuration reference for handoff.ts extension",
+  "note": "This extension is configured by editing the SYSTEM_PROMPT constant in the extension file. No external config file approach.",
+  "configuration_method": "Edit extension source code",
+  "configurable_elements": {
+    "SYSTEM_PROMPT": {
+      "location": "lines 24-41 in handoff.ts",
+      "type": "string (multi-line)",
+      "purpose": "Instructions for the LLM on how to generate handoff prompts",
+      "current_focus": [
+        "Summarize relevant context (decisions, approaches, findings)",
+        "List relevant files discussed/modified",
+        "Clearly state next task based on user goal",
+        "Make it self-contained"
+      ]
+    }
+  },
+  "customization_examples": {
+    "code_focused_summary": {
+      "description": "Use this if you want code-heavy summaries",
+      "modify_SYSTEM_PROMPT_to_focus_on": [
+        "All code files modified or discussed",
+        "Technical decisions and their rationale",
+        "Specific code patterns or gotchas discovered",
+        "Next technical implementation task"
+      ]
+    },
+    "requirement_focused_summary": {
+      "description": "Use this if you want requirement-heavy summaries",
+      "modify_SYSTEM_PROMPT_to_focus_on": [
+        "Feature requirements discussed",
+        "Acceptance criteria",
+        "Constraints and dependencies",
+        "Next implementation milestone"
+      ]
+    },
+    "specification_focused_summary": {
+      "description": "Use this for design/spec documents",
+      "modify_SYSTEM_PROMPT_to_focus_on": [
+        "Design decisions and their rationale",
+        "Architecture and API specifications",
+        "Performance and security requirements",
+        "Next design phase or review"
+      ]
+    }
+  },
+  "how_to_customize": {
+    "step_1": "Open ~/.pi/agent/extensions/handoff.ts",
+    "step_2": "Find the SYSTEM_PROMPT constant (around lines 24-41)",
+    "step_3": "Replace the prompt text with your custom instructions",
+    "step_4": "Save the file",
+    "step_5": "Run 'pi /reload' to reload the extension"
+  },
+  "usage": {
+    "user_command": "/handoff <goal>",
+    "examples": [
+      "/handoff now implement this for teams as well",
+      "/handoff execute phase one of the plan",
+      "/handoff check other places that need this fix",
+      "/handoff write tests for the API",
+      "/handoff review security implications"
+    ]
+  },
+  "workflow": {
+    "step_1": "User types: /handoff <goal>",
+    "step_2": "Extension extracts conversation history from current branch",
+    "step_3": "LLM generates focused prompt using SYSTEM_PROMPT",
+    "step_4": "User sees generated prompt in editor and can edit",
+    "step_5": "User can accept (by sending) or modify before sending",
+    "step_6": "New session created with parent session reference"
+  },
+  "features": {
+    "parent_session_tracking": "New session records which session it came from",
+    "compaction_aware": "If conversation was compacted, handoff includes compaction summary",
+    "abort_safe": "Esc cancels handoff generation",
+    "model_respects_current": "Uses whatever model is selected (respects /model setting)",
+    "editor_review": "User can edit generated prompt before sending to new session"
+  },
+  "advanced_configuration": {
+    "if_you_want_specific_model_for_summarization": {
+      "location": "Around lines 120-125 in handoff.ts",
+      "current": "Uses ctx.model (whatever user selected)",
+      "to_change": "Edit the model selection logic to hardcode a specific model"
+    }
+  }
+}

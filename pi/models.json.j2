@@ -1,0 +1,116 @@
+{
+  "providers": {
+    "enmaas-glm": {
+      "baseUrl": "https://api.enmaas.devshift.net/v1",
+      "apiKey": "!cat {{ home }}/.secrets/enmaas-key",
+      "api": "openai-completions",
+      "models": [
+        {
+          "id": "rits/zai-org/glm-5-3",
+          "name": "GLM 5.3 (EnMaaS)",
+          "input": ["text"],
+          "contextWindow": 1000000,
+          "maxTokens": 65536,
+          "reasoning": true,
+          "compat": {
+            "supportsDeveloperRole": false
+          },
+          "samplingParams": {
+            "frequency_penalty": 0,
+            "presence_penalty": 0
+          }
+        }
+      ]
+    },
+    "enmaas-openai": {
+      "baseUrl": "https://api.enmaas.devshift.net/v1",
+      "apiKey": "!cat {{ home }}/.secrets/enmaas-key",
+      "api": "openai-responses",
+      "models": [
+        {
+          "id": "gpt-6-luna",
+          "name": "GPT-6 Luna (EnMaaS)",
+          "input": ["text"],
+          "contextWindow": 1050000,
+          "maxTokens": 128000,
+          "reasoning": true
+        },
+        {
+          "id": "gpt-6-sol",
+          "name": "GPT-6 Sol (EnMaaS)",
+          "input": ["text"],
+          "contextWindow": 1050000,
+          "maxTokens": 128000,
+          "reasoning": true
+        },
+        {
+          "id": "gpt-6-astra",
+          "name": "GPT-6 Astra (EnMaaS)",
+          "input": ["text"],
+          "contextWindow": 1050000,
+          "maxTokens": 128000,
+          "reasoning": true
+        }
+      ]
+    },
+    "litellm": {
+      "baseUrl": "http://localhost:4000/v1",
+      "apiKey": "!cat {{ home }}/.config/opencode/.litellm-key",
+      "api": "openai-completions",
+      "models": [
+        {
+          "id": "claude-auto",
+          "name": "Claude Auto (litellm proxy)",
+          "input": ["text", "image"],
+          "contextWindow": 200000,
+          "maxTokens": 8192,
+          "reasoning": true
+        },
+        {
+          "id": "claude-opus",
+          "name": "Claude Opus (litellm proxy)",
+          "input": ["text", "image"],
+          "contextWindow": 200000,
+          "maxTokens": 8192,
+          "reasoning": true
+        },
+        {
+          "id": "claude-sonnet",
+          "name": "Claude Sonnet (litellm proxy)",
+          "input": ["text", "image"],
+          "contextWindow": 200000,
+          "maxTokens": 8192,
+          "reasoning": true
+        },
+        {
+          "id": "claude-haiku",
+          "name": "Claude Haiku (litellm proxy)",
+          "input": ["text", "image"],
+          "contextWindow": 200000,
+          "maxTokens": 8192
+        },
+        {
+          "id": "gemini-pro",
+          "name": "Gemini Pro (litellm proxy)",
+          "input": ["text", "image"],
+          "contextWindow": 32000,
+          "maxTokens": 8192
+        },
+        {
+          "id": "gemini-flash",
+          "name": "Gemini Flash (litellm proxy)",
+          "input": ["text", "image"],
+          "contextWindow": 1000000,
+          "maxTokens": 8192
+        },
+        {
+          "id": "gemini-flash-lite",
+          "name": "Gemini Flash Lite (litellm proxy)",
+          "input": ["text", "image"],
+          "contextWindow": 1048576,
+          "maxTokens": 8192
+        }
+      ]
+    }
+  }
+}

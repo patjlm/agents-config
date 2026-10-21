@@ -1,6 +1,6 @@
 # agents-config
 
-Personal AI agent configurations (Claude Code, Codex CLI, OpenCode, oh-my-pi) —
+Personal AI agent configurations (Claude Code, Codex CLI, OpenCode, oh-my-pi, pi) —
 templates and shared data in the repo, rendered/linked into each agent's home
 config by `install.py`.
 

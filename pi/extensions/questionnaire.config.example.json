@@ -1,0 +1,164 @@
+{
+  "description": "Configuration reference for questionnaire.ts extension",
+  "note": "This extension uses TOOL PARAMETERS for configuration, not config files. Configure when LLM calls the tool.",
+  "configuration_method": "Tool parameters (LLM-driven)",
+  "tool_parameters": {
+    "questions": {
+      "type": "array of question objects",
+      "required": true,
+      "description": "Array of question configurations",
+      "question_object_structure": {
+        "id": {
+          "type": "string",
+          "required": true,
+          "example": "scope",
+          "description": "Unique identifier for this question (used in answers)"
+        },
+        "label": {
+          "type": "string",
+          "required": false,
+          "example": "Scope",
+          "default": "Q1, Q2, etc.",
+          "description": "Short label for tab bar (defaults to Q1, Q2 if not provided)"
+        },
+        "prompt": {
+          "type": "string",
+          "required": true,
+          "example": "What is the scope of this change?",
+          "description": "Full question text displayed to user"
+        },
+        "options": {
+          "type": "array of option objects",
+          "required": true,
+          "description": "Available choices",
+          "option_structure": {
+            "value": {
+              "type": "string",
+              "required": true,
+              "example": "small",
+              "description": "Internal value returned when selected"
+            },
+            "label": {
+              "type": "string",
+              "required": true,
+              "example": "Small (< 5 files)",
+              "description": "Display text for the option"
+            },
+            "description": {
+              "type": "string",
+              "required": false,
+              "example": "Affects fewer than 5 files",
+              "description": "Optional help text shown below label"
+            }
+          }
+        },
+        "allowOther": {
+          "type": "boolean",
+          "required": false,
+          "default": true,
+          "description": "Whether to show 'Type something.' option for custom answers"
+        }
+      }
+    }
+  },
+  "example_usage": {
+    "single_question": "Renders simple option list",
+    "multiple_questions": "Renders tab bar for navigation between questions",
+    "auto_advancement": "After answering, moves to next question (or submit tab)",
+    "submit_tab": "Shows after all questions answered, displays summary"
+  },
+  "behavior": {
+    "single_question": {
+      "ui": "Simple option list",
+      "navigation": "Up/Down arrows to select",
+      "auto_submit": true
+    },
+    "multiple_questions": {
+      "ui": "Tab bar with questions",
+      "tab_navigation": "Tab key or Left/Right arrows",
+      "option_navigation": "Up/Down arrows",
+      "shows_completion": "Boxes indicate answered questions (■ = answered, □ = pending)",
+      "submit_tab": "Shows when all questions answered",
+      "auto_advance": "After each answer, moves to next question"
+    }
+  },
+  "keyboard_shortcuts": {
+    "tab_navigation": {
+      "tab": "Next question/tab",
+      "shift+tab": "Previous question/tab",
+      "left_right_arrows": "Also navigate tabs"
+    },
+    "option_selection": {
+      "up_down_arrows": "Navigate options",
+      "enter": "Select option or enter custom mode",
+      "escape": "Return to options (if in custom mode)"
+    },
+    "overall": {
+      "escape": "Cancel entire questionnaire"
+    }
+  },
+  "return_value": {
+    "questions": "Question[] - the original questions",
+    "answers": "Answer[] - array of { id, value, label, wasCustom, index? }",
+    "cancelled": "boolean - true if user cancelled"
+  },
+  "example_full_questionnaire": {
+    "questions": [
+      {
+        "id": "scope",
+        "label": "Scope",
+        "prompt": "What is the scope of this change?",
+        "options": [
+          {
+            "value": "small",
+            "label": "Small",
+            "description": "Affects fewer than 5 files"
+          },
+          {
+            "value": "medium",
+            "label": "Medium",
+            "description": "Affects 5-20 files"
+          },
+          {
+            "value": "large",
+            "label": "Large",
+            "description": "Affects more than 20 files"
+          }
+        ],
+        "allowOther": false
+      },
+      {
+        "id": "priority",
+        "label": "Priority",
+        "prompt": "What is the priority level?",
+        "options": [
+          {
+            "value": "low",
+            "label": "Low"
+          },
+          {
+            "value": "medium",
+            "label": "Medium"
+          },
+          {
+            "value": "high",
+            "label": "High"
+          }
+        ],
+        "allowOther": true
+      },
+      {
+        "id": "notes",
+        "label": "Notes",
+        "prompt": "Any additional context?",
+        "options": [
+          {
+            "value": "none",
+            "label": "No additional notes"
+          }
+        ],
+        "allowOther": true
+      }
+    ]
+  }
+}
