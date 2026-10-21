@@ -992,10 +992,44 @@ PI_HOME = HOME / ".pi" / "agent"
 PI_GLM_PROVIDER = "enmaas-glm"
 PI_GLM_MODEL = "rits/zai-org/glm-5-3"
 # enmaas-off fallback: the vertex provider (pi-vertex extension package,
-# gcloud ADC) with the pre-repo default model — same fallback family as
-# claude, so pi needs no openai-key provider (unlike omp)
+# gcloud ADC) — same fallback family as claude, so pi needs no openai-key
+# provider (unlike omp). opus-4-6, not the pre-repo haiku-4-5: vertex
+# rejects adaptive thinking on haiku-4-5 and modelOverrides cannot reach
+# extension-registered models to disable it.
 PI_FALLBACK_PROVIDER = "vertex"
-PI_FALLBACK_MODEL = "claude-haiku-4-5"
+PI_FALLBACK_MODEL = "claude-opus-4-6"
+
+# @lhl/pi-vertex 1.1.9 (latest, May 2026) predates pi 1.x: it registers
+# its models with an empty baseUrl, which pi's registration validator
+# rejects (github.com/lhl/pi-vertex issue #2, fix proposed but unreleased).
+# Patch the installed copy until a release ships it.
+PI_VERTEX_ENTRY = PI_HOME / "npm" / "node_modules" / "@lhl" / "pi-vertex" / "index.ts"
+PI_VERTEX_BROKEN = 'baseUrl: "", // Will be set dynamically'
+PI_VERTEX_FIXED = (
+    'baseUrl: "https://aiplatform.googleapis.com", '
+    "// Placeholder; actual per-region URL is built in streamVertex()"
+)
+
+
+def patch_pi_vertex(check_only: bool) -> None:
+    """Apply the pi-vertex issue #2 fix to the installed package copy
+    (idempotent; skipped when the package is not installed — pi installs
+    it from settings.json packages on first run)."""
+    path = PI_VERTEX_ENTRY
+    if not path.is_file():
+        return
+    text = path.read_text()
+    if PI_VERTEX_BROKEN in text:
+        if check_only:
+            print(f"would patch: {path} (pi-vertex issue #2)")
+            return
+        path.write_text(text.replace(PI_VERTEX_BROKEN, PI_VERTEX_FIXED))
+        print(f"patched: {path} (pi-vertex issue #2)")
+    elif PI_VERTEX_FIXED not in text:
+        print(
+            f"WARNING: {path} matches neither the issue #2 pattern nor our "
+            "patch — upstream may have changed; check pi-vertex releases"
+        )
 
 
 def pi_symlink_map() -> dict[Path, Path]:
@@ -1024,6 +1058,7 @@ def install_pi(servers: dict, config: dict, check_only: bool) -> bool:
     write_if_changed(PI_HOME / "AGENTS.md", instructions_text("pi"), check_only)
     for dest, source in pi_symlink_map().items():
         link(dest, source, check_only, root=PI_HOME)
+    patch_pi_vertex(check_only)
     models = JINJA.get_template("pi/models.json.j2").render(home=str(HOME))
     try:
         json.loads(models)

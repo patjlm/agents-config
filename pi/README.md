@@ -43,6 +43,18 @@ Untouched by the installer: `auth.json`, `sessions/`, `bin/`, `npm/`
 - On 0.84.x the `compat`/`samplingParams` keys in models.json are
   ignored (GLM still worked in a live smoke test); 1.x applies them.
 
+## vertex provider quirks
+
+- `@lhl/pi-vertex` 1.1.9 (May 2026, latest) predates pi 1.x and fails to
+  register ("baseUrl is required when defining custom models" — issue
+  #2, fix proposed but unreleased). `install.py` patches the installed
+  copy in `~/.pi/agent/npm/node_modules/@lhl/pi-vertex/` idempotently;
+  drop the patch when upstream releases a fix.
+- The enmaas-off fallback model is `vertex/claude-opus-4-6`, not the
+  pre-repo `claude-haiku-4-5`: vertex rejects adaptive thinking on
+  haiku-4-5, and pi's `modelOverrides` cannot reach extension-registered
+  models to disable thinking for it (only built-in catalog models).
+
 ## Verifying
 
 ```sh
