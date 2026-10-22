@@ -57,8 +57,8 @@ Install mechanisms (see AGENTS.md):
       form, no env vars), mcp/servers.jsonc → ~/.omp/agent/mcp.json
       (placeholders become !commands, resolved by omp at connect time),
       AGENTS.md generation (see instructions — without it omp falls back
-      to reading ~/.claude/CLAUDE.md), and a surgical modelRoles.default
-      edit in omp-owned config.yml (config.yml is written by omp itself,
+      to reading ~/.claude/CLAUDE.md), and surgical modelRoles/advisor
+      edits in omp-owned config.yml (config.yml is written by omp itself,
       /settings and `omp config set`, so it is never rendered wholesale).
     - pi: pi/models.json.j2 → ~/.pi/agent/models.json (EnMaaS providers +
       litellm proxy, apiKey via !cat), pi/settings.json.j2 →
@@ -356,7 +356,7 @@ def load_claude_settings(config: dict) -> dict:
         home=str(HOME),
         repo=str(REPO),
         enmaas_enabled=config["enmaas"]["enabled"],
-        rely_on_glm=config["enmaas"].get("rely_on_glm", False),
+        aux_model=config["enmaas"].get("aux_model"),
     )
     return json5_loads(rendered)
 
@@ -624,11 +624,14 @@ CODEX_HOME = HOME / ".codex"
 # `codex --profile <name>` (profiles are separate files layered over
 # config.toml since codex 0.134): name -> (model, reasoning effort). config.toml
 # sets GLM's high effort globally, so each profile pins its model's own codex
-# default (as of codex 0.162) instead of inheriting it.
+# default (as of codex 0.162) instead of inheriting it. The deepseek profile
+# is the secondary EnMaaS option next to the GLM default (medium effort —
+# Flash-class model; low/high are accepted too, see CODEX_SYNTH_MODELS).
 CODEX_PROFILES = {
     "gpt-luna": ("gpt-6-luna", "medium"),
     "gpt-sol": ("gpt-6-sol", "medium"),
     "gpt-astra": ("gpt-6-astra", "low"),
+    "deepseek": ("rits/deepseek-ai/DeepSeek-V4.1-Flash-1017", "medium"),
 }
 
 # {env:VAR} as a whole value (env entries in mcp/servers.jsonc)
@@ -640,13 +643,37 @@ ENV_VALUE_RE = re.compile(r"\{env:([A-Za-z_][A-Za-z0-9_]*)\}")
 # models, derived from the catalog bundled in the codex binary (entries
 # carry ~18K-char system prompts — too bulky and version-bound to commit).
 CODEX_CATALOG = CODEX_HOME / "model-catalog.json"
-CODEX_GLM_MODEL = "rits/zai-org/glm-5-3"
-# The GLM entry is derived from this bundled entry, but only keeps the fields
-# codex requires (found by elimination, codex 0.162) plus its system prompt.
-# Every GPT-specific capability flag is left out so codex falls back to plain
-# defaults — copying them breaks GLM's vLLM backend (supports_search_tool →
-# "Unsupported input item type: additional_tools", apply_patch_tool_type
-# freeform → "Custom tools with a grammar format are not supported").
+# EnMaaS models absent from codex's bundled catalog: slug -> catalog spec.
+# GLM offers high effort only; DeepSeek Flash accepts low/medium/high
+# (verified against /v1/responses) and defaults to medium.
+CODEX_SYNTH_MODELS = {
+    "rits/zai-org/glm-5-3": {
+        "display_name": "GLM 5.3",
+        "default_reasoning_level": "high",
+        "supported_reasoning_levels": [
+            {
+                "effort": "high",
+                "description": "Greater reasoning depth for complex problems",
+            }
+        ],
+    },
+    "rits/deepseek-ai/DeepSeek-V4.1-Flash-1017": {
+        "display_name": "DeepSeek V4.1 Flash",
+        "default_reasoning_level": "medium",
+        "supported_reasoning_levels": [
+            {"effort": "low", "description": "Light reasoning for quick answers"},
+            {"effort": "medium", "description": "Balanced reasoning depth"},
+            {"effort": "high", "description": "Greater reasoning depth for complex problems"},
+        ],
+    },
+}
+# Synthesized entries are derived from this bundled entry, but keep only the
+# fields codex requires (found by elimination, codex 0.162) plus its system
+# prompt. Every GPT-specific capability flag is left out so codex falls back
+# to plain defaults — copying them breaks vLLM backends like GLM's and
+# DeepSeek's (supports_search_tool → "Unsupported input item type:
+# additional_tools", apply_patch_tool_type freeform → "Custom tools with a
+# grammar format are not supported").
 CODEX_GLM_TEMPLATE = "gpt-6-luna"
 CODEX_GLM_KEYS = (
     "shell_type",
@@ -662,9 +689,12 @@ CODEX_GLM_KEYS = (
 def codex_model_catalog() -> str | None:
     """JSON catalog of the EnMaaS models for codex's /model picker, or None
     (with a warning) when it can't be generated — codex then keeps its
-    default catalog, minus GLM in the picker."""
+    default catalog, minus the EnMaaS models in the picker."""
     if shutil.which("codex") is None:
-        print("WARNING: codex CLI not found — skipping model catalog (GLM won't be in /model)")
+        print(
+            "WARNING: codex CLI not found — skipping model catalog "
+            "(EnMaaS models won't be in /model)"
+        )
         return None
     result = subprocess.run(
         ["codex", "--no-daemon", "debug", "models", "--bundled"],
@@ -676,30 +706,27 @@ def codex_model_catalog() -> str | None:
         bundled = json.loads(result.stdout)
         by_slug = {m["slug"]: m for m in bundled["models"]}
         template = by_slug[CODEX_GLM_TEMPLATE]
-        entries = [by_slug[model] for model, _ in CODEX_PROFILES.values()]
-        glm = {k: template[k] for k in CODEX_GLM_KEYS} | {
-            "slug": CODEX_GLM_MODEL,
-            "display_name": "GLM 5.3",
-            "description": "Hosted via EnMaaS",
-            "priority": 0,
-            # GLM runs at high effort (same as claude's modelSettings) — the
-            # only level offered, and the default
-            "default_reasoning_level": "high",
-            "supported_reasoning_levels": [
-                {
-                    "effort": "high",
-                    "description": "Greater reasoning depth for complex problems",
-                }
-            ],
-        }
+        # profile models present in the bundled catalog (the EnMaaS-only
+        # ones — GLM, DeepSeek — are synthesized from the template instead)
+        entries = [
+            by_slug[model]
+            for model, _ in CODEX_PROFILES.values()
+            if model in by_slug
+        ]
+        synth = [
+            {k: template[k] for k in CODEX_GLM_KEYS}
+            | {"slug": slug, "description": "Hosted via EnMaaS", "priority": 0}
+            | spec
+            for slug, spec in CODEX_SYNTH_MODELS.items()
+        ]
     except (ValueError, KeyError, TypeError) as e:
         print(
             f"WARNING: cannot derive codex model catalog from the bundled one "
-            f"({e!r}) — skipping (GLM won't be in /model)"
+            f"({e!r}) — skipping (EnMaaS models won't be in /model)"
         )
         return None
     # EnMaaS rejects service_tier=priority ("Fast") — advertise no tiers.
-    entries = [glm] + [
+    entries = synth + [
         {k: v for k, v in e.items() if k not in ("service_tiers", "additional_speed_tiers")}
         for e in entries
     ]
@@ -911,21 +938,28 @@ def pi_mcp_json(servers: dict, agent: str) -> str:
 OMP_HOME = HOME / ".omp" / "agent"
 OMP_GLM_PROVIDER = "enmaas-glm"
 OMP_GLM_MODEL = "rits/zai-org/glm-5-3"
+# main model: DeepSeek (vision-capable) with GLM as the passively
+# reviewing advisor (omp's advisor runtime) — both free on EnMaaS
+OMP_DEEPSEEK_PROVIDER = "enmaas-deepseek"
+OMP_DEEPSEEK_MODEL = "rits/deepseek-ai/DeepSeek-V4.1-Flash-1017"
 # enmaas-off fallback: direct OpenAI via the key file (same secret and
-# default model as opencode's fallback)
+# default model as opencode's fallback) — advisor dropped, the single
+# fallback model would only review itself
 OMP_FALLBACK_PROVIDER = "openai-key"
 OMP_FALLBACK_MODEL = "gpt-6-luna"
 
 
-def set_omp_default_model(config: dict, check_only: bool) -> None:
-    """Route omp's default model — EnMaaS GLM when enabled (config.jsonc),
-    direct OpenAI via the key file otherwise (same fallback as opencode) —
-    surgically.
+def set_omp_model_roles(config: dict, check_only: bool) -> None:
+    """Route omp's model roles — EnMaaS DeepSeek as the main model with
+    GLM as advisor (advisor runtime enabled) when enmaas is on
+    (config.jsonc), direct OpenAI via the key file otherwise (same
+    fallback as opencode) — surgically.
 
     config.yml is omp-owned (/settings, `omp config set` write to it), so
     unlike the other generated configs we never render it wholesale: only
-    modelRoles.default changes, omp's own settings survive. The yaml
-    round-trip drops comments, which omp rewrites anyway.
+    modelRoles.default/advisor and advisor.enabled change, omp's own
+    settings survive. The yaml round-trip drops comments, which omp
+    rewrites anyway.
     """
     path = OMP_HOME / "config.yml"
     if path.is_symlink():
@@ -941,21 +975,45 @@ def set_omp_default_model(config: dict, check_only: bool) -> None:
         data = loaded if isinstance(loaded, dict) else {}
     roles = data.get("modelRoles")
     roles = roles if isinstance(roles, dict) else {}
-    current = roles.get("default")
+    advisor = data.get("advisor")
+    advisor = advisor if isinstance(advisor, dict) else {}
     if config["enmaas"]["enabled"]:
-        wanted = f"{OMP_GLM_PROVIDER}/{OMP_GLM_MODEL}"
+        wanted_roles = {
+            "default": f"{OMP_DEEPSEEK_PROVIDER}/{OMP_DEEPSEEK_MODEL}",
+            "advisor": f"{OMP_GLM_PROVIDER}/{OMP_GLM_MODEL}",
+        }
+        wanted_advisor_enabled = True
     else:
-        wanted = f"{OMP_FALLBACK_PROVIDER}/{OMP_FALLBACK_MODEL}"
-    if current == wanted:
-        print(f"unchanged: {path} (modelRoles.default)")
+        wanted_roles = {
+            "default": f"{OMP_FALLBACK_PROVIDER}/{OMP_FALLBACK_MODEL}",
+        }
+        wanted_advisor_enabled = False
+    # unchanged iff every wanted role matches, no managed role lingers
+    # that shouldn't (advisor when enmaas is off), and advisor.enabled
+    # matches
+    stale = ({"default", "advisor"} - wanted_roles.keys()) & roles.keys()
+    if (
+        not stale
+        and all(roles.get(k) == v for k, v in wanted_roles.items())
+        and advisor.get("enabled") == wanted_advisor_enabled
+    ):
+        print(f"unchanged: {path} (modelRoles/advisor)")
         return
     if check_only:
-        print(f"would set modelRoles.default = {wanted} in {path}")
+        print(
+            f"would set modelRoles = {wanted_roles}, "
+            f"advisor.enabled = {wanted_advisor_enabled} in {path}"
+        )
         return
     if path.is_file():
         backup(path)
-    roles["default"] = wanted
+    for key, value in wanted_roles.items():
+        roles[key] = value
+    if "advisor" not in wanted_roles:
+        roles.pop("advisor", None)
     data["modelRoles"] = roles
+    advisor["enabled"] = wanted_advisor_enabled
+    data["advisor"] = advisor
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(yaml.dump(data, sort_keys=False))
     print(f"installed: {path}")
@@ -966,7 +1024,7 @@ def install_omp(servers: dict, config: dict, check_only: bool) -> bool:
     key read via !cat at request time), mcp.json (from mcp/servers.jsonc,
     placeholders → !commands), AGENTS.md (common guidelines — without it
     omp falls back to reading ~/.claude/CLAUDE.md), plus the surgical
-    modelRoles.default edit in omp-owned config.yml."""
+    modelRoles/advisor edits in omp-owned config.yml."""
     write_if_changed(OMP_HOME / "AGENTS.md", instructions_text("omp"), check_only)
     models = JINJA.get_template("omp/models.yml.j2").render(home=str(HOME))
     try:
@@ -981,7 +1039,7 @@ def install_omp(servers: dict, config: dict, check_only: bool) -> bool:
     write_if_changed(
         OMP_HOME / "mcp.json", pi_mcp_json(servers, "omp"), check_only, parse=json.loads
     )
-    set_omp_default_model(config, check_only)
+    set_omp_model_roles(config, check_only)
     return True
 
 

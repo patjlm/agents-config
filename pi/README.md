@@ -58,7 +58,7 @@ Untouched by the installer: `auth.json`, `sessions/`, `bin/`, `npm/`
 ## Verifying
 
 ```sh
-pi --list-models enmaas          # enmaas-glm + enmaas-openai (+ litellm)
+pi --list-models enmaas          # enmaas-glm + enmaas-deepseek + enmaas-openai (+ litellm)
 pi -p "Reply with exactly: ok"   # live EnMaaS GLM round-trip
 ```
 

@@ -29,6 +29,31 @@ providers:
         samplingParams:
           frequency_penalty: 0
           presence_penalty: 0
+  # DeepSeek V4.1 Flash over the completions API — secondary option next to
+  # GLM. Unlike GLM's vLLM backend it accepts the developer role and
+  # sampling penalties natively (verified), so compat only declares that;
+  # it also takes image input. Limits not exposed by the EnMaaS API;
+  # announced 1M context, 64K output assumed like GLM.
+  enmaas-deepseek:
+    baseUrl: https://api.enmaas.devshift.net/v1
+    apiKey: "!cat {{ home }}/.secrets/enmaas-key"
+    api: openai-completions
+    models:
+      - id: rits/deepseek-ai/DeepSeek-V4.1-Flash-1017
+        name: DeepSeek V4.1 Flash 1017 (EnMaaS)
+        reasoning: true
+        input:
+          - text
+          - image
+        contextWindow: 1048576
+        maxTokens: 65536
+        cost:
+          input: 0
+          output: 0
+          cacheRead: 0
+          cacheWrite: 0
+        compat:
+          supportsDeveloperRole: true
   # gpt profile models over the responses API — the completions API rejects
   # function tools with reasoning effort (same finding as opencode/codex).
   # These entries are constructed from our opencode limits, not proven by

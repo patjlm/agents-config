@@ -22,6 +22,30 @@
         }
       ]
     },
+    "enmaas-deepseek": {
+      "baseUrl": "https://api.enmaas.devshift.net/v1",
+      "apiKey": "!cat {{ home }}/.secrets/enmaas-key",
+      "api": "openai-completions",
+      "models": [
+        {
+          "id": "rits/deepseek-ai/DeepSeek-V4.1-Flash-1017",
+          "name": "DeepSeek V4.1 Flash 1017 (EnMaaS)",
+          "reasoning": true,
+          "input": ["text", "image"],
+          "contextWindow": 1048576,
+          "maxTokens": 65536,
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cacheRead": 0,
+            "cacheWrite": 0
+          },
+          "compat": {
+            "supportsDeveloperRole": true
+          }
+        }
+      ]
+    },
     "enmaas-openai": {
       "baseUrl": "https://api.enmaas.devshift.net/v1",
       "apiKey": "!cat {{ home }}/.secrets/enmaas-key",

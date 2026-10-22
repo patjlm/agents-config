@@ -22,20 +22,34 @@ lags that.
 ## Verifying the install
 
 ```sh
-omp models list                 # enmaas-glm + enmaas-openai (+ openai-key) providers
-omp config list | grep modelRoles   # default: enmaas-glm/rits/zai-org/glm-5-3
-omp -p "Reply with exactly: ok"     # live EnMaaS GLM round-trip
+omp models list                 # enmaas-glm + enmaas-deepseek + enmaas-openai (+ openai-key) providers
+omp config list | grep -E "modelRoles|advisor"   # default: enmaas-deepseek/rits/deepseek-ai/DeepSeek-V4.1-Flash-1017,
+                                  # advisor: enmaas-glm/rits/zai-org/glm-5-3, advisor.enabled: true
+omp -p "Reply with exactly: ok"     # live EnMaaS DeepSeek round-trip
 ```
 
 The smoke test exercises the full chain: `modelRoles.default` routing,
-the `!cat ~/.secrets/enmaas-key` request-time key read, and the GLM
-compat flags in `omp/models.yml.j2`.
+the `!cat ~/.secrets/enmaas-key` request-time key read, and the model
+entries in `omp/models.yml.j2`.
+
+## Advisor mode
+
+omp's advisor runtime pairs a second model (the `advisor` model role)
+that passively reviews each turn and injects notes. `install.py` wires
+DeepSeek as the main model with GLM as the advisor (`advisor.enabled:
+true`) — both free on EnMaaS, so the extra per-turn review costs
+latency only. Toggle per session with `--advisor`/`--no-advisor` or
+`/advisor` in the TUI. When `enmaas.enabled=false` the advisor role is
+dropped (the single openai-key fallback would only review itself).
 
 ## Proven vs. untested
 
 - **Proven live**: GLM 5.3 via `enmaas-glm` (completions API,
   `supportsDeveloperRole: false`, zeroed penalties — colleague-proven
-  flags, verified with a real completion).
+  flags, verified with a real completion). DeepSeek V4.1 Flash via
+  `enmaas-deepseek` (completions API — developer role, penalties, image
+  input, and function tools all verified directly against the API; no
+  compat flags needed, unlike GLM).
 - **Untested**: the `enmaas-openai` gpt models (luna/sol/astra over
   `openai-responses`) and the `openai-key` fallback provider (direct
   OpenAI, used only when `enmaas.enabled=false`). Entries were

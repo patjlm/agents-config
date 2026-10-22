@@ -7,7 +7,7 @@
       "type": "object",
       "properties": {
         "enabled": { "type": "boolean" },
-        "rely_on_glm": { "type": "boolean" }
+        "aux_model": { "type": ["string", "null"] }
       },
       "required": ["enabled"],
       "additionalProperties": false
