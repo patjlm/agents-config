@@ -22,15 +22,43 @@ lags that.
 ## Verifying the install
 
 ```sh
-omp models list                 # enmaas-glm + enmaas-deepseek + enmaas-openai (+ openai-key) providers
+omp models list                 # enmaas-glm/deepseek/openai/anthropic (+ openai-key) providers
 omp config list | grep -E "modelRoles|advisor"   # default: enmaas-deepseek/rits/deepseek-ai/DeepSeek-V4.1-Flash-1017,
                                   # advisor: enmaas-glm/rits/zai-org/glm-5-3, advisor.enabled: true
 omp -p "Reply with exactly: ok"     # live EnMaaS DeepSeek round-trip
+# anthropic provider (one per model family):
+omp -p --no-session --model enmaas-anthropic/claude-opus-5-5 -- "Reply with exactly: ok"
+omp -p --no-session --model enmaas-anthropic/claude-sonnet-5-5 -- "Reply with exactly: ok"
+omp -p --no-session --model enmaas-anthropic/claude-haiku-4-5 -- "Reply with exactly: ok"
 ```
 
 The smoke test exercises the full chain: `modelRoles.default` routing,
 the `!cat ~/.secrets/enmaas-key` request-time key read, and the model
 entries in `omp/models.yml.j2`.
+
+## enmaas-anthropic provider quirks
+
+Claude models over EnMaaS's anthropic-compatible endpoint. omp derives
+the thinking mode from the model id: adaptive on sonnet/opus 5.x,
+budget on haiku 4.5 — all three reason and work live (unlike pi, which
+must keep haiku `reasoning: false`: pi sends the interleaved-thinking
+beta as a body field, omp as a header the gateway tolerates). Three
+overrides are required — without them omp 401s or 400s (all verified
+live):
+
+- `headers.X-Api-Key`: for a non-official anthropic baseUrl omp sends
+  `Authorization: Bearer <key>` and drops `X-Api-Key`; EnMaaS only
+  accepts `x-api-key` (a Bearer request answers `missing API key`).
+- `disableStrictTools: true` (a provider-level key, sibling of `api` —
+  not a `compat` entry): omp marks builtin tools (e.g. `edit`) as
+  Anthropic strict tools, which EnMaaS's Vertex backend refuses with
+  "disallowed feature `structured_outputs`" (FAILED_PRECONDITION).
+- `compat.supportsContextManagement: false`: the gateway rejects the
+  experimental `context_management` request field.
+
+Experimental beta header names in `anthropic-beta` are tolerated by the
+gateway. Model ids are the plain Anthropic ones; they don't appear in
+`GET /v1/models` but the anthropic endpoint serves them.
 
 ## Advisor mode
 
@@ -50,6 +78,10 @@ dropped (the single openai-key fallback would only review itself).
   `enmaas-deepseek` (completions API — developer role, penalties, image
   input, and function tools all verified directly against the API; no
   compat flags needed, unlike GLM).
+- **Proven live**: Claude Opus/Sonnet 5.5 and Haiku 4.5 via `enmaas-anthropic`
+  (anthropic-messages; adaptive thinking on 5.5, budget thinking on
+  haiku; end-to-end `omp -p` round-trips for all three, with the
+  overrides listed above).
 - **Untested**: the `enmaas-openai` gpt models (luna/sol/astra over
   `openai-responses`) and the `openai-key` fallback provider (direct
   OpenAI, used only when `enmaas.enabled=false`). Entries were

@@ -43,6 +43,28 @@ Untouched by the installer: `auth.json`, `sessions/`, `bin/`, `npm/`
 - On 0.84.x the `compat`/`samplingParams` keys in models.json are
   ignored (GLM still worked in a live smoke test); 1.x applies them.
 
+## enmaas-anthropic provider quirks
+
+Claude models over EnMaaS's anthropic-compatible endpoint (`api:
+anthropic-messages`, baseUrl without `/v1` — the SDK appends
+`/v1/messages`). The gateway validates with an older Anthropic schema:
+
+- Message-level `output_config` is rejected (`messages.N.output_config:
+  Extra inputs are not permitted`). pi only emits it when
+  `compat.supportsMidConvoEffort` is true, which pi's built-in catalog
+  sets for opus-5/5-5 and sonnet-5-5 — so overriding the built-in
+  `anthropic` provider breaks; a custom provider defaults it to false.
+  The template pins `supportsMidConvoEffort: false` explicitly.
+- A body-level `betas` field is rejected. pi sends it for
+  budget-thinking models (interleaved thinking), so `claude-haiku-4-5`
+  is configured `reasoning: false`. Adaptive models (opus/sonnet 5.5)
+  set `forceAdaptiveThinking: true`, which skips the interleaved beta.
+- Accepted and verified live: adaptive thinking plus top-level
+  `output_config.effort`, streaming, tool definitions, and the catalog
+  token caps (1M context / 128K output on 5.5; 200K / 64K on haiku).
+- Model ids are the plain Anthropic ones; they don't appear in
+  `GET /v1/models` but the anthropic endpoint serves them.
+
 ## vertex provider quirks
 
 - `@lhl/pi-vertex` 1.1.9 (May 2026, latest) predates pi 1.x and fails to
@@ -58,8 +80,12 @@ Untouched by the installer: `auth.json`, `sessions/`, `bin/`, `npm/`
 ## Verifying
 
 ```sh
-pi --list-models enmaas          # enmaas-glm + enmaas-deepseek + enmaas-openai (+ litellm)
+pi --list-models enmaas          # enmaas-glm/deepseek/openai/anthropic (+ litellm)
 pi -p "Reply with exactly: ok"   # live EnMaaS GLM round-trip
+# anthropic provider (one per model family):
+pi -p --no-session --provider enmaas-anthropic --model claude-opus-5-5 -- "Reply with exactly: ok"
+pi -p --no-session --provider enmaas-anthropic --model claude-sonnet-5-5 -- "Reply with exactly: ok"
+pi -p --no-session --provider enmaas-anthropic --model claude-haiku-4-5 -- "Reply with exactly: ok"
 ```
 
 The smoke test exercises `defaultProvider`/`defaultModel` routing and

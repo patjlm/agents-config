@@ -99,6 +99,66 @@ providers:
           output: 0
           cacheRead: 0
           cacheWrite: 0
+  # Claude models over EnMaaS's anthropic-compatible endpoint. omp derives the
+  # thinking mode from the model id: adaptive on sonnet/opus 5.x, budget on
+  # haiku 4.5 — all three reasoning, all verified live. Three overrides the
+  # gateway requires (without them the request 401s or 400s):
+  # - headers.X-Api-Key: omp defaults to "Authorization: Bearer" for non-official
+  #   anthropic baseUrls; EnMaaS only accepts x-api-key.
+  # - disableStrictTools (provider-level key, not compat): EnMaaS's Vertex
+  #   backend rejects Anthropic strict tool schemas ("disallowed feature
+  #   structured_outputs"), which omp would otherwise set on builtin edit tools.
+  # - compat.supportsContextManagement: false — the gateway rejects the
+  #   experimental context_management field.
+  enmaas-anthropic:
+    baseUrl: https://api.enmaas.devshift.net
+    apiKey: "!cat {{ home }}/.secrets/enmaas-key"
+    headers:
+      X-Api-Key: "!cat {{ home }}/.secrets/enmaas-key"
+    api: anthropic-messages
+    disableStrictTools: true
+    compat:
+      supportsContextManagement: false
+    models:
+      - id: claude-opus-5-5
+        name: Claude Opus 5.5 (EnMaaS)
+        reasoning: true
+        input:
+          - text
+          - image
+        contextWindow: 1000000
+        maxTokens: 128000
+        cost:
+          input: 0
+          output: 0
+          cacheRead: 0
+          cacheWrite: 0
+      - id: claude-sonnet-5-5
+        name: Claude Sonnet 5.5 (EnMaaS)
+        reasoning: true
+        input:
+          - text
+          - image
+        contextWindow: 1000000
+        maxTokens: 128000
+        cost:
+          input: 0
+          output: 0
+          cacheRead: 0
+          cacheWrite: 0
+      - id: claude-haiku-4-5
+        name: Claude Haiku 4.5 (EnMaaS)
+        reasoning: true
+        input:
+          - text
+          - image
+        contextWindow: 200000
+        maxTokens: 64000
+        cost:
+          input: 0
+          output: 0
+          cacheRead: 0
+          cacheWrite: 0
   # Fallback when EnMaaS is down (config.jsonc enmaas.enabled=false) —
   # direct OpenAI with the personal key file, mirroring opencode's
   # fallback. install.py then routes modelRoles.default here.
