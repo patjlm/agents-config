@@ -1187,7 +1187,9 @@ def pi_mcp_json(servers: dict, agent: str) -> str:
 
     Notes: per-server opencode "timeout" has no documented pi/omp
     equivalent and is dropped; secrets translate to !commands
-    (pi_secret_value).
+    (pi_secret_value). "oauth": false (opencode's opt-out of OAuth
+    auto-detection) is dropped for pi: its loader only accepts an oauth
+    object, so a boolean is inexpressible there; omp accepts both.
     """
     entries = {}
     for name, server in servers.items():
@@ -1196,8 +1198,9 @@ def pi_mcp_json(servers: dict, agent: str) -> str:
             continue
         if merged["type"] == "remote":
             out = {"type": "http", "url": merged["url"]}
-            if "oauth" in merged:
-                out["oauth"] = merged["oauth"]
+            oauth = merged.get("oauth")
+            if oauth is not None and not (agent == "pi" and isinstance(oauth, bool)):
+                out["oauth"] = oauth
             headers = {
                 k: pi_secret_value(v) for k, v in merged.get("headers", {}).items()
             }

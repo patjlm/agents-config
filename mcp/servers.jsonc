@@ -36,6 +36,12 @@
       "execution": 180000
     }
   },
+  "google-workspace": {
+    "type": "remote",
+    // Red Hat internal deployment; OAuth 2.1 (PKCE, dynamic client
+    // registration) — no headers: each agent authenticates per user.
+    "url": "https://gworkspace.corp.redhat.com/mcp"
+  },
   "slack-mcp": {
     "type": "local",
     "command": [
