@@ -8,8 +8,9 @@ config by `install.py`.
 
 ```sh
 make check     # validate renders without installing
+make plan      # same, plus a diff of every file that would change
 make install   # idempotent; re-run after any change
-make check AGENT=pi   # single agent, same for install (claude/codex/opencode/omp/pi)
+make check AGENT=pi   # single agent, same for plan/install (claude/codex/opencode/omp/pi)
 ```
 
 Everything else — layout, install rules, per-agent specifics, repo conventions —

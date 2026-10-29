@@ -1,4 +1,4 @@
-.PHONY: install check plugins
+.PHONY: install check plan plugins
 
 # AGENT=<name> installs/validates a single agent (e.g. make install AGENT=pi).
 # Filtered against valid names: stray AGENT values from the environment
@@ -10,6 +10,11 @@ install:
 
 check:
 	uv run install.py --check $(AGENT)
+
+# Same as check, plus a unified diff of each file that would change — the
+# quickest way to see how an MCP server renders into every agent's format.
+plan:
+	uv run install.py --plan $(AGENT)
 
 plugins:
 	uv run install.py --plugins

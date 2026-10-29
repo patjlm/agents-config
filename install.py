@@ -7,6 +7,7 @@
 Usage:
     uv run install.py             # render + validate + install (all agents)
     uv run install.py --check     # render + validate only, write nothing
+    uv run install.py --plan      # --check plus a unified diff of each change
     uv run install.py --plugins   # only claude plugins (incl. the mcp plugin)
 
 Structure: shared primitives, shared data, then one section per agent —
@@ -82,6 +83,7 @@ backs up differing destinations before overwriting, never writes through
 symlinks. One agent failing does not abort the others.
 """
 import argparse
+import difflib
 import functools
 import json
 import re
@@ -102,6 +104,9 @@ from json5 import loads as json5_loads
 
 REPO = Path(__file__).resolve().parent
 HOME = Path.home()
+# --plan: check mode plus a unified diff of every file that would change,
+# so an MCP server definition can be previewed in each agent's native format.
+PLAN = False
 
 JINJA = Environment(
     loader=FileSystemLoader(str(REPO)),
@@ -156,6 +161,24 @@ def link(dest: Path, source: Path, check_only: bool, root: Path | None = None) -
     print(f"linked: {dest} -> {source}")
 
 
+def plan_diff(dest: Path, text: str) -> None:
+    """Unified diff of what is at dest now against what would be written.
+
+    Only regular files: a symlink is replaced rather than compared, and a
+    missing file has nothing to diff. Rendered content holds secret *references*
+    (env vars, !cat commands), never values."""
+    if dest.is_symlink() or not dest.is_file():
+        return
+    sys.stdout.writelines(
+        difflib.unified_diff(
+            dest.read_text().splitlines(keepends=True),
+            text.splitlines(keepends=True),
+            fromfile=f"{dest} (current)",
+            tofile=f"{dest} (rendered)",
+        )
+    )
+
+
 def write_if_changed(
     dest: Path,
     text: str,
@@ -197,6 +220,8 @@ def write_if_changed(
         if warn is not None and old is not None:
             warn(old, None)
         print(f"would install: {dest}")
+        if PLAN:
+            plan_diff(dest, text)
         return True
     dest.parent.mkdir(parents=True, exist_ok=True)
     backup_path = None
@@ -1323,6 +1348,11 @@ def parse_args() -> argparse.Namespace:
         help="render + validate only, write nothing",
     )
     parser.add_argument(
+        "--plan",
+        action="store_true",
+        help="like --check, plus a unified diff of every file that would change",
+    )
+    parser.add_argument(
         "--plugins",
         action="store_true",
         help="only claude plugins (incl. the mcp plugin)",
@@ -1341,7 +1371,10 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> int:
+    global PLAN
     args = parse_args()
+    PLAN = args.plan
+    check_only = args.check or args.plan
     try:
         servers = load_mcp_servers()
     except (ValueError, jsonschema.ValidationError) as e:
@@ -1355,14 +1388,14 @@ def main() -> int:
         return 1
     print("valid: config.jsonc")
     if args.plugins:
-        return 0 if install_claude_plugins(servers, config, args.check) else 1
+        return 0 if install_claude_plugins(servers, config, check_only) else 1
     selected = [
         f for f in INSTALLERS if not args.agent or f.__name__ == f"install_{args.agent}"
     ]
     ok = True
     for installer in selected:
         try:
-            ok &= installer(servers, config, args.check)
+            ok &= installer(servers, config, check_only)
         except Exception as e:  # one agent failing must not abort the others
             ok = False
             print(f"FAILED: {installer.__name__} — {e!r}", file=sys.stderr)

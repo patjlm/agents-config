@@ -58,7 +58,7 @@ Personal repo: AI agent configurations + scripts to install them automatically.
 - **Never commit sensitive info** (credentials, tokens, API keys, secrets). Configs may be shared/synced widely — assume anything here is public.
 - Config files must not reference sensitive files inside this repo, even if gitignored. Reference them by absolute path outside the repo instead (`~` or `$HOME`, e.g. `~/.secrets/openai.key`).
 - Config + scripts only (Python via uv, shell). No build, test, or lint toolchain.
-- Verify changes by running `make check` (validate renders without installing), then `make install` (expect `unchanged:` on re-run), and exercise the affected agent.
+- Verify changes by running `make check` (validate renders without installing) — `make plan` adds a unified diff of every file that would change, which is how to preview an `mcp/servers.jsonc` edit in each agent's native format — then `make install` (expect `unchanged:` on re-run), and exercise the affected agent.
 - Upstream opencode config schema (opencode.ai/config.json) is V1-stale — rejects V2 keys (`permissions`, `providers`). Only syntax-check rendered opencode config; schema-check only formats we own (e.g. `mcp/servers.schema.json`). Revisit if upstream publishes V2 schema.
 
 ## References
