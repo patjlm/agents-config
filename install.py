@@ -17,10 +17,11 @@ Agent-specific *formats* live in the agent's folder as Jinja templates
 CLI calls, drift checks) lives in the agent's section here.
 
 Validation:
-    - Rendered configs: syntax check (json5 parse). The upstream opencode
-      schema (https://opencode.ai/config.json) is V1-stale — it rejects V2
-      keys like "permissions"/"providers" — so only syntax is checked there.
-      Revisit if upstream publishes a V2 schema.
+    - Rendered configs: syntax check (json5 parse). The opencode config is
+      additionally validated against the vendored v2 schema
+      (opencode/config.schema.json, published at https://opencode.ai/config.json
+      — refresh it when upgrading opencode), and rendered opencode subagent
+      templates are validated as v2 `agents` entries.
     - Shared data (mcp/servers.jsonc): checked against mcp/servers.schema.json
       (self-owned, so it tracks reality).
     - claude/settings.jsonc.j2: parse check (json5 — comments allowed) before
@@ -527,6 +528,9 @@ def sync_subagents(
         targets = parse_targets(text, name)
         if targets is not None and agent not in targets:
             continue
+        if templated and agent == "opencode":
+            # Frontmatter must be a valid v2 agents entry (defined below).
+            validate_opencode_agent(name, text)
         wanted[name] = (src, text if templated else None)
     for name, (src, text) in sorted(wanted.items()):
         if text is None:
@@ -546,6 +550,29 @@ def sync_subagents(
 OPENCODE_DEST = HOME / ".config/opencode/opencode.jsonc"
 OPENCODE_AGENTS = HOME / ".config/opencode/agents"
 OPENCODE_INSTRUCTIONS = HOME / ".config/opencode/AGENTS.md"
+# Published OpenCode v2 schema, vendored so installs validate offline. Refresh
+# it when upgrading OpenCode:
+#   curl -fsSL https://opencode.ai/config.json -o opencode/config.schema.json
+OPENCODE_SCHEMA = REPO / "opencode" / "config.schema.json"
+
+
+@functools.cache
+def opencode_schema() -> dict:
+    return json.loads(OPENCODE_SCHEMA.read_text())
+
+
+def validate_opencode_agent(name: str, text: str) -> None:
+    """Check a rendered definition's frontmatter as a v2 `agents` entry
+    (mode, model, permissions actions/effects)."""
+    match = FRONTMATTER_RE.match(text)
+    try:
+        front = yaml.safe_load(match.group(1)) if match else {}
+    except yaml.YAMLError as e:
+        raise ValueError(f"{name}: invalid frontmatter — {e}") from e
+    try:
+        jsonschema.validate({"agents": {name: front}}, opencode_schema())
+    except jsonschema.ValidationError as e:
+        raise ValueError(f"{name}: not a valid OpenCode v2 agent — {e.message}") from e
 
 
 def install_opencode(servers: dict, config: dict, check_only: bool) -> bool:
@@ -565,9 +592,18 @@ def install_opencode(servers: dict, config: dict, check_only: bool) -> bool:
         enmaas_enabled=config["enmaas"]["enabled"],
     )
     try:
-        json5_loads(rendered)  # syntax check (schema is V1-stale, see AGENTS.md)
+        rendered_config = json5_loads(rendered)
     except ValueError as e:
         print(f"INVALID: {OPENCODE_DEST} — {e}", file=sys.stderr)
+        return False
+    try:
+        jsonschema.validate(rendered_config, opencode_schema())
+    except jsonschema.ValidationError as e:
+        where = "/".join(map(str, e.absolute_path)) or "(root)"
+        print(
+            f"INVALID: {OPENCODE_DEST} — {e.message} (at {where})",
+            file=sys.stderr,
+        )
         return False
     print(f"valid: {OPENCODE_DEST}")
     write_if_changed(OPENCODE_DEST, rendered, check_only)

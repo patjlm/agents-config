@@ -21,13 +21,28 @@ mode: subagent
    enmaas-free/rits/deepseek-ai/DeepSeek-V4.1-Flash-1017 #}
 model: {{ "enmaas-free/rits/zai-org/glm-5-3" if enmaas_enabled else "openai/gpt-6-luna" }}
 permissions:
+  # OpenCode v2: ordered {action, resource, effect} rules, last match wins,
+  # anything unmatched defaults to ask. File writes are split across edit/
+  # write/patch and command execution across shell/execute, so each is denied.
   - action: edit
+    resource: "*"
+    effect: deny
+  - action: write
+    resource: "*"
+    effect: deny
+  - action: patch
     resource: "*"
     effect: deny
   - action: shell
     resource: "*"
     effect: deny
+  - action: execute
+    resource: "*"
+    effect: deny
   - action: webfetch
+    resource: "*"
+    effect: allow
+  - action: websearch
     resource: "*"
     effect: allow
   - action: glob
