@@ -6,7 +6,9 @@
   // Default model: EnMaaS GLM, or openai/gpt-6-luna when enmaas is disabled
   // (config.jsonc) — used for model + build/title/compaction/summary agents.
   {% set default_model = "enmaas-free/rits/zai-org/glm-5-3" if enmaas_enabled else "openai/gpt-6-luna" %}
-  "instructions": ["{{ home }}/.agents/AGENTS.md"],
+  // Instructions: ~/.config/opencode/AGENTS.md is auto-loaded (common +
+  // opencode-specific guidelines). Don't also list ~/.agents/AGENTS.md under
+  // "instructions" — it holds the same common text and would load twice.
   "permissions": [
     { "action": "*", "resource": "*", "effect": "ask" },
     { "action": "read", "resource": "*", "effect": "allow" },
