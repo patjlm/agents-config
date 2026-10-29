@@ -9,10 +9,10 @@
     "enabled": true,
     // Free EnMaaS model covering claude code's cheap auxiliary usage
     // (haiku alias for background tasks + auto-mode classifier) instead
-    // of claude-haiku-4-5. Switch to another free model (e.g.
+    // of claude-haiku-5-5. Switch to another free model (e.g.
     // rits/deepseek-ai/DeepSeek-V4.1-Flash-1017) when this one is
     // unavailable but EnMaaS still serves the claude models; null =
-    // claude-haiku-4-5.
+    // claude-haiku-5-5.
     "aux_model": "rits/zai-org/glm-5-3"
   }
 }

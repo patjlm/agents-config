@@ -29,7 +29,7 @@ omp -p "Reply with exactly: ok"     # live EnMaaS DeepSeek round-trip
 # anthropic provider (one per model family):
 omp -p --no-session --model enmaas-anthropic/claude-opus-5-5 -- "Reply with exactly: ok"
 omp -p --no-session --model enmaas-anthropic/claude-sonnet-5-5 -- "Reply with exactly: ok"
-omp -p --no-session --model enmaas-anthropic/claude-haiku-4-5 -- "Reply with exactly: ok"
+omp -p --no-session --model enmaas-anthropic/claude-haiku-5-5 -- "Reply with exactly: ok"
 ```
 
 The smoke test exercises the full chain: `modelRoles.default` routing,
@@ -39,10 +39,8 @@ entries in `omp/models.yml.j2`.
 ## enmaas-anthropic provider quirks
 
 Claude models over EnMaaS's anthropic-compatible endpoint. omp derives
-the thinking mode from the model id: adaptive on sonnet/opus 5.x,
-budget on haiku 4.5 — all three reason and work live (unlike pi, which
-must keep haiku `reasoning: false`: pi sends the interleaved-thinking
-beta as a body field, omp as a header the gateway tolerates). Three
+the thinking mode from the model id: adaptive on every 5.5 model
+(opus/sonnet/haiku) — all three reason and work live. Three
 overrides are required — without them omp 401s or 400s (all verified
 live):
 
@@ -78,10 +76,9 @@ dropped (the single openai-key fallback would only review itself).
   `enmaas-deepseek` (completions API — developer role, penalties, image
   input, and function tools all verified directly against the API; no
   compat flags needed, unlike GLM).
-- **Proven live**: Claude Opus/Sonnet 5.5 and Haiku 4.5 via `enmaas-anthropic`
-  (anthropic-messages; adaptive thinking on 5.5, budget thinking on
-  haiku; end-to-end `omp -p` round-trips for all three, with the
-  overrides listed above).
+- **Proven live**: Claude Opus/Sonnet/Haiku 5.5 via `enmaas-anthropic`
+  (anthropic-messages; adaptive thinking on all three; end-to-end
+  `omp -p` round-trips for all three, with the overrides listed above).
 - **Untested**: the `enmaas-openai` gpt models (luna/sol/astra over
   `openai-responses`) and the `openai-key` fallback provider (direct
   OpenAI, used only when `enmaas.enabled=false`). Entries were
