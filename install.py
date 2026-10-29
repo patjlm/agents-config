@@ -27,8 +27,9 @@ Validation:
 
 Install mechanisms (see AGENTS.md):
     - opencode: template render → ~/.config/opencode/opencode.jsonc.
-    - claude: 1:1 files (statusline, agents/, commands/, hooks/,
-      skills/) → symlinks into ~/.claude. settings.jsonc.j2 is rendered to
+    - claude: 1:1 files (statusline, agents/, commands/, hooks/) →
+      symlinks into ~/.claude; skills come from the shared skills
+      mechanism below. settings.jsonc.j2 is rendered to
       JSON and copied to ~/.claude/settings.json — never symlinked, Claude
       Code itself writes to it (permissions, /config); the unchanged check
       compares parsed JSON so its reformatting doesn't trigger reinstalls,
@@ -45,6 +46,14 @@ Install mechanisms (see AGENTS.md):
       surface as drift (backups kept).
       ~/.agents/AGENTS.md stays a symlink to the common file (convention
       anchor; no agent reads it for instructions).
+    - skills: shared skills/ (plus <agent>/skills/ for agent-only ones) →
+      whole-directory symlinks into ~/.claude/skills, ~/.agents/skills
+      (read by codex, pi and opencode) and ~/.omp/agent/skills. A SKILL.md
+      frontmatter `targets: [claude, omp]` limits a skill to those agents;
+      absent means every agent. Destinations follow skillshare's maintained
+      registry (see AGENTS.md). Stale links into this repo are pruned, and
+      backups go under <agent dir>/backups — a .bak next to the skills would
+      be discovered as a skill.
     - config.jsonc: repo-wide settings (enmaas.enabled), rendered into every
       agent config — flip + re-run to switch agents between EnMaaS and their
       fallbacks (claude: Vertex via gcloud ADC, opencode: openai, codex:
@@ -73,6 +82,7 @@ backs up differing destinations before overwriting, never writes through
 symlinks. One agent failing does not abort the others.
 """
 import argparse
+import functools
 import json
 import re
 import shlex
@@ -297,13 +307,136 @@ def instructions_text(agent: str) -> str:
 
 def install_shared(servers: dict, config: dict, check_only: bool) -> bool:
     """Cross-agent 1:1 content (uniform INSTALLERS signature; servers and
-    config unused). The ~/.agents dir itself is managed by other tooling
-    (skills, .skill-lock.json) — only AGENTS.md is ours."""
+    config unused): ~/.agents/AGENTS.md and ~/.agents/skills. The skills
+    directory is read by codex, pi and opencode (see the skills section);
+    it used to belong to the `skills` CLI, install.py owns it now."""
     link(HOME / ".agents" / "AGENTS.md", AGENTS_SRC / "AGENTS.md", check_only)
+    sync_skills(
+        HOME / ".agents" / "skills",
+        ("codex", "pi", "opencode"),
+        check_only,
+        root=HOME / ".agents",
+    )
     return True
 
 
+# --- shared: skills/ ---------------------------------------------------------
+#
+# One shared skill tree, fanned out as whole-directory symlinks: a skill is a
+# directory (SKILL.md + resources), so linking the directory means a resource
+# added in the repo needs no reinstall, and a skill is added/removed atomically.
+# Destinations come from skillshare's maintained agent registry
+# (https://github.com/runkids/skillshare/blob/main/internal/config/targets.yaml):
+#   ~/.claude/skills       claude
+#   ~/.agents/skills       codex, pi and opencode all scan it (also_scans)
+#   ~/.omp/agent/skills    omp scans only its own directory
+# A SKILL.md frontmatter `targets: [claude, omp]` limits a skill to those
+# agents; no `targets` means every agent. Skills that are specific to one
+# agent live under <agent>/skills/ and are linked by that agent's section.
+
+SKILLS_SRC = REPO / "skills"
+SKILL_AGENTS = ("claude", "codex", "omp", "opencode", "pi")
+FRONTMATTER_RE = re.compile(r"\A---\n(.*?)\n---\n", re.S)
+
+
+@functools.cache
+def skill_targets(skill_dir: Path) -> tuple[str, ...] | None:
+    """`targets:` from a shared skill's SKILL.md frontmatter; None = all."""
+    match = FRONTMATTER_RE.match((skill_dir / "SKILL.md").read_text())
+    try:
+        data = yaml.safe_load(match.group(1)) if match else None
+    except yaml.YAMLError as e:
+        raise ValueError(f"{skill_dir.name}: invalid SKILL.md frontmatter — {e}") from e
+    targets = (data or {}).get("targets")
+    if targets is None:
+        return None
+    if isinstance(targets, str):
+        targets = [targets]
+    if not isinstance(targets, list) or not all(isinstance(t, str) for t in targets):
+        raise ValueError(
+            f'{skill_dir.name}: SKILL.md "targets" must be a list of agent names'
+        )
+    unknown = sorted(set(targets).difference(SKILL_AGENTS))
+    if unknown:
+        print(
+            f"WARNING: {skill_dir.name}: unknown targets {unknown} "
+            f"(known: {', '.join(SKILL_AGENTS)})"
+        )
+    return tuple(targets)
+
+
+@functools.cache
+def shared_skill_dirs() -> tuple[tuple[str, Path], ...]:
+    """Every shared skill directory (name, path), warned about once."""
+    found = []
+    for src in sorted(SKILLS_SRC.iterdir()):
+        if not src.is_dir():
+            continue
+        if not (src / "SKILL.md").is_file():
+            print(f"WARNING: skills/{src.name}: no SKILL.md — skipped")
+            continue
+        found.append((src.name, src))
+    return tuple(found)
+
+
+def shared_skills(agents: tuple[str, ...]) -> dict[str, Path]:
+    """Shared skills these agents may read (frontmatter targets, absent = all)."""
+    wanted: dict[str, Path] = {}
+    for name, src in shared_skill_dirs():
+        targets = skill_targets(src)
+        if targets is None or set(agents).intersection(targets):
+            wanted[name] = src
+    return wanted
+
+
+def agent_skills(agent: str) -> dict[str, Path]:
+    """<agent>/skills/* — skills for that agent only."""
+    root = REPO / agent / "skills"
+    if not root.is_dir():
+        return {}
+    return {src.name: src for src in sorted(root.iterdir()) if src.is_dir()}
+
+
+def prune_skill_links(dest_dir: Path, wanted: set[str], check_only: bool) -> None:
+    """Remove our stale skill links (symlinks resolving into this repo).
+    Real directories and foreign links — app-installed skills, say — stay."""
+    if not dest_dir.is_dir():
+        return
+    for entry in sorted(dest_dir.iterdir()):
+        if entry.name in wanted or not entry.is_symlink():
+            continue
+        target = entry.resolve()
+        if not target.is_relative_to(REPO):
+            continue
+        if check_only:
+            print(f"would remove: {entry} -> {target}")
+        else:
+            entry.unlink()
+            print(f"removed: {entry} -> {target}")
+
+
+def sync_skills(
+    dest_dir: Path,
+    agents: tuple[str, ...],
+    check_only: bool,
+    root: Path,
+    extra: dict[str, Path] | None = None,
+) -> None:
+    """Link shared skills (filtered by `targets:`) plus agent-only ones into
+    dest_dir, then prune our stale links. Backups go under root/backups — a
+    .bak directory next to the skills would be discovered as a skill."""
+    wanted = shared_skills(agents)
+    wanted.update(extra or {})
+    for name, src in sorted(wanted.items()):
+        link(dest_dir / name, src, check_only, root=root)
+    prune_skill_links(dest_dir, set(wanted), check_only)
+
+
 # --- opencode ----------------------------------------------------------------
+#
+# Skills: none linked here — opencode scans both ~/.claude/skills and
+# ~/.agents/skills, which the claude and shared sections populate (see the
+# shared skills section).
 
 
 OPENCODE_DEST = HOME / ".config/opencode/opencode.jsonc"
@@ -365,9 +498,9 @@ def claude_symlink_map() -> dict[Path, Path]:
     """dest in ~/.claude -> source file/dir in the repo.
 
     Top-level files and files under agents/commands/hooks are linked
-    individually; skills are linked as whole directories (mirrors the
-    ~/.agents skills pattern). CLAUDE.md and settings.json are handled
-    separately (both generated, see install_claude).
+    individually. Skills are linked by sync_skills (shared skills/ filtered
+    by `targets:`, plus claude/skills/ for Claude-only ones). CLAUDE.md and
+    settings.json are handled separately (both generated, see install_claude).
     """
     links: dict[Path, Path] = {}
     for name in ("statusline-command.sh",):
@@ -376,9 +509,6 @@ def claude_symlink_map() -> dict[Path, Path]:
         for src in sorted((CLAUDE_SRC / sub).iterdir()):
             if src.is_file():
                 links[CLAUDE_HOME / sub / src.name] = src
-    for src in sorted((CLAUDE_SRC / "skills").iterdir()):
-        if src.is_dir():
-            links[CLAUDE_HOME / "skills" / src.name] = src
     return links
 
 
@@ -401,6 +531,13 @@ def install_claude(servers: dict, config: dict, check_only: bool) -> bool:
     )
     for dest, source in claude_symlink_map().items():
         link(dest, source, check_only, root=CLAUDE_HOME)
+    sync_skills(
+        CLAUDE_HOME / "skills",
+        ("claude",),
+        check_only,
+        root=CLAUDE_HOME,
+        extra=agent_skills("claude"),
+    )
 
     # settings.json: rendered from settings.jsonc.j2 and copied, never
     # symlinked — Claude Code writes to it (permissions, /config).
@@ -616,6 +753,9 @@ def install_claude_plugins(servers: dict, config: dict, check_only: bool) -> boo
 
 
 # --- codex -------------------------------------------------------------------
+#
+# Skills: none linked here — codex reads ~/.agents/skills, which
+# install_shared populates (see the shared skills section).
 
 
 CODEX_HOME = HOME / ".codex"
@@ -1040,10 +1180,14 @@ def install_omp(servers: dict, config: dict, check_only: bool) -> bool:
         OMP_HOME / "mcp.json", pi_mcp_json(servers, "omp"), check_only, parse=json.loads
     )
     set_omp_model_roles(config, check_only)
+    sync_skills(OMP_HOME / "skills", ("omp",), check_only, root=OMP_HOME)
     return True
 
 
 # --- pi ------------------------------------------------------------------------
+#
+# Skills: none linked here — pi reads ~/.agents/skills, which install_shared
+# populates (see the shared skills section).
 
 
 PI_HOME = HOME / ".pi" / "agent"
