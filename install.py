@@ -28,9 +28,9 @@ Validation:
 
 Install mechanisms (see AGENTS.md):
     - opencode: template render → ~/.config/opencode/opencode.jsonc.
-    - claude: 1:1 files (statusline, agents/, commands/, hooks/) →
-      symlinks into ~/.claude; skills come from the shared skills
-      mechanism below. settings.jsonc.j2 is rendered to
+    - claude: 1:1 files (statusline, commands/, hooks/) → symlinks into
+      ~/.claude; skills and subagents come from the shared mechanisms below.
+      settings.jsonc.j2 is rendered to
       JSON and copied to ~/.claude/settings.json — never symlinked, Claude
       Code itself writes to it (permissions, /config); the unchanged check
       compares parsed JSON so its reformatting doesn't trigger reinstalls,
@@ -55,6 +55,12 @@ Install mechanisms (see AGENTS.md):
       registry (see AGENTS.md). Stale links into this repo are pruned, and
       backups go under <agent dir>/backups — a .bak next to the skills would
       be discovered as a skill.
+    - subagents: shared subagents/*.md (linked 1:1) and *.md.j2 (rendered per
+      agent with `agent` in the context) → ~/.claude/agents and
+      ~/.config/opencode/agents, the only agents that read definition files.
+      One template can carry both frontmatter dialects (claude's tools/model
+      versus opencode's mode/permissions/model id). `targets:` in the
+      frontmatter limits a definition; absent means both.
     - config.jsonc: repo-wide settings (enmaas.enabled), rendered into every
       agent config — flip + re-run to switch agents between EnMaaS and their
       fallbacks (claude: Vertex via gcloud ADC, opencode: openai, codex:
@@ -112,6 +118,15 @@ JINJA = Environment(
     loader=FileSystemLoader(str(REPO)),
     undefined=StrictUndefined,
     keep_trailing_newline=True,
+)
+# Markdown templates: lstrip/trim keep conditionals from leaving blank lines
+# behind (a blank line inside frontmatter or a list is visible in the file).
+JINJA_MD = Environment(
+    loader=FileSystemLoader(str(REPO)),
+    undefined=StrictUndefined,
+    keep_trailing_newline=True,
+    trim_blocks=True,
+    lstrip_blocks=True,
 )
 
 
@@ -360,34 +375,47 @@ def install_shared(servers: dict, config: dict, check_only: bool) -> bool:
 # agent live under <agent>/skills/ and are linked by that agent's section.
 
 SKILLS_SRC = REPO / "skills"
-SKILL_AGENTS = ("claude", "codex", "omp", "opencode", "pi")
+AGENT_NAMES = ("claude", "codex", "omp", "opencode", "pi")
 FRONTMATTER_RE = re.compile(r"\A---\n(.*?)\n---\n", re.S)
+# Fallback for frontmatter yaml refuses (see parse_targets): inline form only.
+TARGETS_RE = re.compile(r"^targets:\s*\[([^\]]*)\]", re.M)
 
 
 @functools.cache
-def skill_targets(skill_dir: Path) -> tuple[str, ...] | None:
-    """`targets:` from a shared skill's SKILL.md frontmatter; None = all."""
-    match = FRONTMATTER_RE.match((skill_dir / "SKILL.md").read_text())
+def parse_targets(text: str, label: str) -> tuple[str, ...] | None:
+    """`targets:` from a definition's frontmatter; None = every agent."""
+    match = FRONTMATTER_RE.match(text)
+    front = match.group(1) if match else ""
     try:
-        data = yaml.safe_load(match.group(1)) if match else None
-    except yaml.YAMLError as e:
-        raise ValueError(f"{skill_dir.name}: invalid SKILL.md frontmatter — {e}") from e
-    targets = (data or {}).get("targets")
+        data = yaml.safe_load(front) or {}
+    except yaml.YAMLError:
+        # Hand-written agent definitions are not always strict YAML (an
+        # unquoted colon in a description breaks yaml, though Claude's own
+        # parser accepts it). Only `targets:` matters here, so read the
+        # inline form directly and treat anything else as "every agent".
+        inline = TARGETS_RE.search(front)
+        data = {"targets": inline.group(1).split(",") if inline else None}
+    targets = data.get("targets")
     if targets is None:
         return None
     if isinstance(targets, str):
         targets = [targets]
     if not isinstance(targets, list) or not all(isinstance(t, str) for t in targets):
-        raise ValueError(
-            f'{skill_dir.name}: SKILL.md "targets" must be a list of agent names'
-        )
-    unknown = sorted(set(targets).difference(SKILL_AGENTS))
+        raise ValueError(f'{label}: "targets" must be a list of agent names')
+    targets = [t.strip().strip("'\"") for t in targets]
+    unknown = sorted(set(targets).difference(AGENT_NAMES))
     if unknown:
         print(
-            f"WARNING: {skill_dir.name}: unknown targets {unknown} "
-            f"(known: {', '.join(SKILL_AGENTS)})"
+            f"WARNING: {label}: unknown targets {unknown} "
+            f"(known: {', '.join(AGENT_NAMES)})"
         )
     return tuple(targets)
+
+
+@functools.cache
+def skill_targets(skill_dir: Path) -> tuple[str, ...] | None:
+    """`targets:` from a shared skill's SKILL.md; None = every agent."""
+    return parse_targets((skill_dir / "SKILL.md").read_text(), skill_dir.name)
 
 
 @functools.cache
@@ -422,7 +450,7 @@ def agent_skills(agent: str) -> dict[str, Path]:
     return {src.name: src for src in sorted(root.iterdir()) if src.is_dir()}
 
 
-def prune_skill_links(dest_dir: Path, wanted: set[str], check_only: bool) -> None:
+def prune_repo_links(dest_dir: Path, wanted: set[str], check_only: bool) -> None:
     """Remove our stale skill links (symlinks resolving into this repo).
     Real directories and foreign links — app-installed skills, say — stay."""
     if not dest_dir.is_dir():
@@ -454,7 +482,58 @@ def sync_skills(
     wanted.update(extra or {})
     for name, src in sorted(wanted.items()):
         link(dest_dir / name, src, check_only, root=root)
-    prune_skill_links(dest_dir, set(wanted), check_only)
+    prune_repo_links(dest_dir, set(wanted), check_only)
+
+
+# --- shared: subagents/ ------------------------------------------------------
+#
+# Agent definitions for the agents that read them: claude (~/.claude/agents)
+# and opencode (~/.config/opencode/agents). A plain .md is linked 1:1; a
+# .md.j2 is rendered per agent with `agent` in the context, so one source can
+# carry both frontmatter dialects — claude's `tools:`/`model: <alias or id>`
+# versus opencode's `mode:`/`permissions:`/`model: provider/id`. `targets:` in
+# the (rendered) frontmatter limits a definition to some agents; absent means
+# every agent that reads definitions. Generated definitions are not pruned —
+# like other rendered configs, removing the template leaves the last render.
+
+SUBAGENTS_SRC = REPO / "subagents"
+
+
+def sync_subagents(
+    agent: str,
+    dest_dir: Path,
+    config: dict,
+    check_only: bool,
+    root: Path,
+) -> None:
+    """Place subagent definitions for one agent, then prune our stale links.
+    Backups go under root/backups, never next to the definitions."""
+    wanted: dict[str, tuple[Path, str | None]] = {}
+    for src in sorted(SUBAGENTS_SRC.iterdir()):
+        templated = src.name.endswith(".md.j2")
+        if not templated and src.suffix != ".md":
+            continue
+        name = src.name[: -len(".j2")] if templated else src.name
+        text = (
+            JINJA_MD.get_template(f"subagents/{src.name}").render(
+                agent=agent,
+                enmaas_enabled=config["enmaas"]["enabled"],
+                home=str(HOME),
+                repo=str(REPO),
+            )
+            if templated
+            else src.read_text()
+        )
+        targets = parse_targets(text, name)
+        if targets is not None and agent not in targets:
+            continue
+        wanted[name] = (src, text if templated else None)
+    for name, (src, text) in sorted(wanted.items()):
+        if text is None:
+            link(dest_dir / name, src, check_only, root=root)
+        else:
+            write_if_changed(dest_dir / name, text, check_only, root=root)
+    prune_repo_links(dest_dir, set(wanted), check_only)
 
 
 # --- opencode ----------------------------------------------------------------
@@ -465,6 +544,7 @@ def sync_skills(
 
 
 OPENCODE_DEST = HOME / ".config/opencode/opencode.jsonc"
+OPENCODE_AGENTS = HOME / ".config/opencode/agents"
 OPENCODE_INSTRUCTIONS = HOME / ".config/opencode/AGENTS.md"
 
 
@@ -491,6 +571,13 @@ def install_opencode(servers: dict, config: dict, check_only: bool) -> bool:
         return False
     print(f"valid: {OPENCODE_DEST}")
     write_if_changed(OPENCODE_DEST, rendered, check_only)
+    sync_subagents(
+        "opencode",
+        OPENCODE_AGENTS,
+        config,
+        check_only,
+        root=HOME / ".config/opencode",
+    )
     return True
 
 
@@ -522,15 +609,16 @@ def load_claude_settings(config: dict) -> dict:
 def claude_symlink_map() -> dict[Path, Path]:
     """dest in ~/.claude -> source file/dir in the repo.
 
-    Top-level files and files under agents/commands/hooks are linked
-    individually. Skills are linked by sync_skills (shared skills/ filtered
-    by `targets:`, plus claude/skills/ for Claude-only ones). CLAUDE.md and
-    settings.json are handled separately (both generated, see install_claude).
+    Top-level files and files under commands/hooks are linked individually.
+    Skills are linked by sync_skills (shared skills/ filtered by `targets:`,
+    plus claude/skills/ for Claude-only ones); subagents by sync_subagents.
+    CLAUDE.md and settings.json are handled separately (both generated, see
+    install_claude).
     """
     links: dict[Path, Path] = {}
     for name in ("statusline-command.sh",):
         links[CLAUDE_HOME / name] = CLAUDE_SRC / name
-    for sub in ("agents", "commands", "hooks"):
+    for sub in ("commands", "hooks"):
         for src in sorted((CLAUDE_SRC / sub).iterdir()):
             if src.is_file():
                 links[CLAUDE_HOME / sub / src.name] = src
@@ -563,6 +651,7 @@ def install_claude(servers: dict, config: dict, check_only: bool) -> bool:
         root=CLAUDE_HOME,
         extra=agent_skills("claude"),
     )
+    sync_subagents("claude", CLAUDE_HOME / "agents", config, check_only, root=CLAUDE_HOME)
 
     # settings.json: rendered from settings.jsonc.j2 and copied, never
     # symlinked — Claude Code writes to it (permissions, /config).

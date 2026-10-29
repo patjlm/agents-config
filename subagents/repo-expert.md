@@ -1,4 +1,5 @@
 ---
+targets: [claude]
 name: repo-expert
 description: Use this agent PROACTIVELY whenever the user asks questions about a repository's internals, architecture, structure, conventions, patterns, build system, dependencies, or how code works. Use INSTEAD of full codebase discovery to save tokens. Discovers repo structure, architecture, patterns, and conventions, caches results, and answers questions from cache. Spawn for parallel repo analysis or when exploring unfamiliar codebases. Examples of triggers: "how does X work in this repo", "what's the architecture of Y", "where is Z defined", "explain the build system", "what framework does this use", "how are tests organized".
 tools: Read, Grep, Glob, Bash, Write, Edit, ToolSearch
