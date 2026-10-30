@@ -84,6 +84,12 @@ Install mechanisms (see AGENTS.md):
       needs pi 1.x), AGENTS.md generation, and 1:1 symlinks for
       extensions/ + settings/ (gathered from the pre-repo setup;
       runtime-written *.config.json files stay unmanaged).
+    - harnesses: harnesses/<name>/harness.jsonc + AGENTS.md (task content) with
+      <agent>/harness/ templates → ~/.pi/harnesses/<name>/: rendered mcp.json
+      (selected servers + per-harness overrides) and settings.json (pinned
+      model), symlinked AGENTS.md/models.json/skills, and an executable `pi`
+      launcher that sets PI_CODING_AGENT_DIR, CA trust and the tool policy.
+      That launcher is also the T3 Code pi provider binary (binary path).
 
 Idempotent: skips destinations whose content already matches the render,
 backs up differing destinations before overwriting, never writes through
@@ -286,12 +292,18 @@ def warn_drift(
 AGENTS = ("claude", "codex", "opencode", "omp", "pi")
 
 
+@functools.cache
+def mcp_server_schema() -> dict:
+    """mcp/servers.schema.json — one `server` definition per key."""
+    with open(REPO / "mcp" / "servers.schema.json") as f:
+        return json.load(f)
+
+
 def load_mcp_servers() -> dict:
     """Load and schema-check the canonical MCP server list."""
     with open(REPO / "mcp" / "servers.jsonc") as f:
         servers = json5_loads(f.read())
-    with open(REPO / "mcp" / "servers.schema.json") as f:
-        schema = json.load(f)
+    schema = mcp_server_schema()
     jsonschema.validate(instance=servers, schema=schema)
     return servers
 
@@ -773,7 +785,7 @@ def check_plugin_drift(config: dict) -> None:
 
 def remove_mcp_duplicates() -> bool:
     """User-scope MCP servers in ~/.claude.json that our mcp plugin now
-    manages (e.g. a pre-existing slack-mcp entry) would show up as
+    manages (e.g. a pre-existing hand-added entry) would show up as
     duplicates — remove them."""
     try:
         managed = json.loads(MCP_PLUGIN_TARGET.read_text())["mcpServers"]
@@ -1453,6 +1465,180 @@ def install_pi(servers: dict, config: dict, check_only: bool) -> bool:
     return True
 
 
+# --- harnesses/ --------------------------------------------------------------
+#
+# A harness is a task-scoped agent: its own config dir, instructions, MCP
+# servers, model and tool policy — e.g. a Slack-only assistant started from a
+# T3 Code thread or as `~/.pi/harnesses/slack/pi -p ...`.
+#
+# harnesses/<name>/ holds the task content (harness.jsonc, AGENTS.md, skills/);
+# the agent's *format* templates live in <agent>/harness/. pi is the only agent
+# with a harness renderer so far: PI_CODING_AGENT_DIR (pi 1.x) points the whole
+# pi config dir at ~/.pi/harnesses/<name>, and T3 Code's pi provider accepts any
+# executable as its binary path, so the generated launcher is both the CLI entry
+# point and the T3 provider binary.
+
+HARNESSES_SRC = REPO / "harnesses"
+PI_HARNESSES = PI_HOME.parent / "harnesses"
+HARNESS_AGENTS = ("pi",)
+
+
+def load_harnesses() -> list[dict]:
+    """Load and sanity-check harnesses/*/harness.jsonc."""
+    harnesses = []
+    for manifest in sorted(HARNESSES_SRC.glob("*/harness.jsonc")):
+        name = manifest.parent.name
+        with open(manifest) as f:
+            data = json5_loads(f.read())
+        if data.get("agent") not in HARNESS_AGENTS:
+            raise ValueError(
+                f"{manifest}: agent must be one of {HARNESS_AGENTS}, "
+                f"got {data.get('agent')!r}"
+            )
+        model = data.get("model")
+        if not isinstance(model, dict) or not {"provider", "id"} <= model.keys():
+            raise ValueError(f"{manifest}: model needs provider and id")
+        mcp = data.get("mcp")
+        if not isinstance(mcp, dict) or not mcp:
+            raise ValueError(f"{manifest}: mcp must list at least one server")
+        harnesses.append({"name": name, **data})
+    return harnesses
+
+
+def install_harnesses(servers: dict, config: dict, check_only: bool) -> bool:
+    """Render each harness into its agent's harness location. Task content
+    comes from harnesses/<name>/, formats from <agent>/harness/."""
+    try:
+        harnesses = load_harnesses()
+    except ValueError as e:
+        print(f"INVALID: harnesses — {e}", file=sys.stderr)
+        return False
+    ok = True
+    for harness in harnesses:
+        if harness["agent"] == "pi":
+            ok &= install_pi_harness(harness, servers, check_only)
+    return ok
+
+
+def install_pi_harness(harness: dict, servers: dict, check_only: bool) -> bool:
+    """~/.pi/harnesses/<name>: rendered mcp.json + settings.json, symlinked
+    AGENTS.md/models.json/skills, and the executable `pi` launcher."""
+    name = harness["name"]
+    dest = PI_HARNESSES / name
+    selected = {}
+    for server_name, entry in harness["mcp"].items():
+        entry = entry or {}
+        if "type" in entry:
+            # Harness-owned definition, for a server no other agent should
+            # have. Validated exactly like an mcp/servers.jsonc entry.
+            try:
+                jsonschema.validate({server_name: entry}, mcp_server_schema())
+            except jsonschema.ValidationError as e:
+                print(
+                    f"INVALID: harnesses/{name}/harness.jsonc — {server_name}: "
+                    f"{e.message}",
+                    file=sys.stderr,
+                )
+                return False
+            selected[server_name] = entry
+        elif server_name in servers:
+            selected[server_name] = deep_merge(servers[server_name], entry)
+        else:
+            print(
+                f"INVALID: harnesses/{name}/harness.jsonc — unknown MCP server "
+                f"{server_name!r} (define it with a `type` or add it to "
+                "mcp/servers.jsonc)",
+                file=sys.stderr,
+            )
+            return False
+    write_if_changed(
+        dest / "mcp.json", pi_mcp_json(selected, "pi"), check_only, parse=json.loads
+    )
+
+    model = {"thinking": "medium", **harness["model"]}
+    settings = JINJA.get_template("pi/harness/settings.json.j2").render(model=model)
+    try:
+        new = json.loads(settings)
+    except ValueError as e:
+        print(f"INVALID: pi/harness/settings.json.j2 — {e}", file=sys.stderr)
+        return False
+    write_if_changed(
+        dest / "settings.json",
+        settings,
+        check_only,
+        root=dest,
+        parse=json.loads,
+        warn=lambda old, backup: warn_drift(
+            f"~/.pi/harnesses/{name}/settings.json",
+            "pi/harness/settings.json.j2",
+            old,
+            new,
+            backup,
+        ),
+    )
+
+    args = ["--no-skills"]
+    if harness.get("excludeTools"):
+        args += ["--exclude-tools", ",".join(harness["excludeTools"])]
+    skills_src = HARNESSES_SRC / name / "skills"
+    if skills_src.is_dir():
+        for skill in sorted(p for p in skills_src.iterdir() if p.is_dir()):
+            link(dest / "skills" / skill.name, skill, check_only, root=dest)
+            args += ["--skill", str(dest / "skills" / skill.name)]
+    for rel in harness.get("extensions", []):
+        source = HARNESSES_SRC / name / rel
+        if not source.is_file():
+            print(
+                f"INVALID: harnesses/{name}/harness.jsonc — missing extension "
+                f"{rel!r}",
+                file=sys.stderr,
+            )
+            return False
+        link(dest / rel, source, check_only, root=dest)
+        args += ["--extension", str(dest / rel)]
+
+    env = harness.get("env", {})
+    for key, value in env.items():
+        if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", key) or not (
+            value is None or isinstance(value, str)
+        ):
+            print(
+                f"INVALID: harnesses/{name}/harness.jsonc — env {key!r} needs a "
+                "shell variable name and a string (or null to pass it through)",
+                file=sys.stderr,
+            )
+            return False
+    env_exports = "\n".join(
+        f'export {key}="${{{key}:-}}"'
+        if value is None
+        else f"export {key}={shlex.quote(value)}"
+        for key, value in env.items()
+    )
+    launcher = JINJA.get_template("pi/harness/launcher.j2").render(
+        home=str(HOME),
+        args=[shlex.quote(arg) for arg in args],
+        env_exports=env_exports,
+    )
+    write_if_changed(dest / "pi", launcher, check_only)
+    if not check_only:
+        (dest / "pi").chmod(0o700)
+
+    link(dest / "AGENTS.md", HARNESSES_SRC / name / "AGENTS.md", check_only, root=dest)
+    for rel in harness.get("files", []):
+        source = HARNESSES_SRC / name / rel
+        if not source.is_file():
+            print(
+                f"INVALID: harnesses/{name}/harness.jsonc — missing file {rel!r}",
+                file=sys.stderr,
+            )
+            return False
+        link(dest / rel, source, check_only, root=dest)
+    # One provider set for every pi config dir; the harness narrows the model
+    # in settings.json. Depends on the pi section having rendered models.json.
+    link(dest / "models.json", PI_HOME / "models.json", check_only, root=dest)
+    return True
+
+
 # --- main --------------------------------------------------------------------
 
 
@@ -1463,6 +1649,7 @@ INSTALLERS = (
     install_codex,
     install_omp,
     install_pi,
+    install_harnesses,
 )
 
 

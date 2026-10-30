@@ -94,8 +94,6 @@ dropped (the single openai-key fallback would only review itself).
 - `atlassian` needs an OAuth login (`omp login`) or an
   `"omp": {"exclude": true}` override in `mcp/servers.jsonc` — without
   auth it fails with HTTP 401. (claude/codex both exclude it.)
-- `slack-mcp` env values come from `!printenv`, so the `SLACK_MCP_*`
-  variables must exist in the shell that launches omp.
 - `omp` reads no pi (`~/.pi`) config; without `~/.omp/agent/AGENTS.md`
   it falls back to `~/.claude/CLAUDE.md` — the installer generates the
   omp one to avoid that.

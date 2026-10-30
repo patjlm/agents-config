@@ -1,0 +1,78 @@
+{
+  // Task-scoped agent: its own config dir, instructions, MCP servers, model
+  // and tool policy. Rendered by install.py from <agent>/harness/ templates;
+  // this file only describes the task. See AGENTS.md (repo) for the rules.
+  "agent": "pi",
+  "description": "Slack read/write assistant with image support",
+
+  // Provider + model ids from the agent's model set (pi/models.json.j2).
+  // DeepSeek is the vision-capable EnMaaS model: Slack images reach the model
+  // through read after a bash download (see AGENTS.md here).
+  "model": {
+    "provider": "enmaas-deepseek",
+    "id": "rits/deepseek-ai/DeepSeek-V4.1-Flash-1017",
+    "thinking": "medium"
+  },
+
+  // MCP servers: a name from mcp/servers.jsonc plus an override object
+  // (deep-merged over the base server, same rules as per-agent blocks), or a
+  // full definition (with `type`) owned by the harness. Slack is harness-only,
+  // so it is defined here and no other agent renders it.
+  "mcp": {
+    "slack-mcp": {
+      "type": "local",
+      "command": [
+        "podman",
+        "run",
+        "-i",
+        "--rm",
+        "-e",
+        "SLACK_XOXC_TOKEN",
+        "-e",
+        "SLACK_XOXD_TOKEN",
+        "-e",
+        "MCP_TRANSPORT=stdio",
+        "-e",
+        "SLACK_MCP_READ_ONLY",
+        "quay.io/redhat-ai-tools/slack-mcp"
+      ],
+      // A T3 Code desktop launch does not inherit ~/.bashrc.d exports, so
+      // read the tokens from files instead of {env:...} (outside the repo).
+      // LOGS_CHANNEL_ID is deliberately unset: current images write audit
+      // lines to stderr instead of posting a log message per tool call.
+      "environment": {
+        "SLACK_XOXC_TOKEN": "{file:~/.secrets/slack-xoxc}",
+        "SLACK_XOXD_TOKEN": "{file:~/.secrets/slack-xoxd}"
+      }
+    }
+  },
+
+  // Extra environment exported by the launcher before it execs pi. It runs
+  // after T3 sets its own variables, so these values win.
+  //
+  // T3 injects an extension that asks for approval on every MCP/bash/codemode
+  // call unless the thread's runtime mode is full-access; the extension reads
+  // T3_PI_RUNTIME_MODE at each call. This harness is unattended and
+  // single-purpose, so approvals are turned off here. T3 still displays the
+  // thread's own mode (usually Auto) — this is a deliberate override. Remove
+  // the entry to restore approvals.
+  "env": {
+    "T3_PI_RUNTIME_MODE": "full-access",
+    // null = pass the caller's value through, defaulting to empty. Set
+    // SLACK_MCP_READ_ONLY=1 when invoking the harness to hide write tools.
+    "SLACK_MCP_READ_ONLY": null
+  },
+
+  // Symlinked into the harness dir (so the paths in AGENTS.md are stable).
+  // Read-only Slack helper: channel names, handles, exact time filtering.
+  "files": ["slack.py"],
+
+  // pi extensions loaded with --extension. guard.ts enforces the bash, read
+  // and MCP-write policy; see harnesses/slack/AGENTS.md.
+  "extensions": ["guard.ts"],
+
+  // Built-in tools to keep off. bash stays: the helper above runs through it,
+  // and Slack image URLs are private and must be downloaded before read can
+  // attach them.
+  "excludeTools": ["edit", "write"]
+}

@@ -29,19 +29,19 @@ Untouched by the installer: `auth.json`, `sessions/`, `bin/`, `npm/`
 
 ## Versions
 
-- Installed binary was npm-global `@earendil-works/pi-coding-agent`
-  0.84.3 (old line); upstream is 1.x. The old name
-  `@mariozechner/pi-coding-agent` is deprecated.
-- Recommended install: the official installer pins dependencies via
-  npm-shrinkwrap and self-updates with `pi update`:
-  `curl -fsSL https://pi.dev/install.sh | sh` (it also offers to migrate
-  a legacy npm-global install). Plain npm works but does not pin
-  transitive deps. Node 22.19+ required.
-- `mcp.json` (rendered from `mcp/servers.jsonc`, shared pi-family
-  translation) needs pi 1.x — 0.84.x predates built-in MCP and ignores
-  it.
-- On 0.84.x the `compat`/`samplingParams` keys in models.json are
-  ignored (GLM still worked in a live smoke test); 1.x applies them.
+- Managed install in `~/.pi/agent/install`: one release directory per
+  version, `install/current-version` selects the active one, and the
+  launcher `~/.pi/agent/bin/pi` is symlinked from `~/.local/bin/pi`.
+  Active release here: **1.4.0**. Self-update with `pi update`; the
+  official installer pins dependencies via npm-shrinkwrap and can migrate
+  a legacy npm-global install (`curl -fsSL https://pi.dev/install.sh | sh`).
+  Node 22.19+ (this machine runs v26 via mise; the installer's own
+  `~/.local/share/pi-node` directory is absent).
+- The pre-repo install was npm-global `@earendil-works/pi-coding-agent`
+  0.84.3 (the older `@mariozechner/pi-coding-agent` name is deprecated).
+  Everything in this repo targets 1.x: built-in MCP (`mcp.json`), model
+  `compat`/`samplingParams`, `--skill`/`--exclude-tools`, and the harness
+  launcher. 0.84.x predates built-in MCP and ignores those model keys.
 
 ## Corporate CA trust (internal HTTPS endpoints)
 
@@ -127,3 +127,101 @@ The smoke test exercises `defaultProvider`/`defaultModel` routing and
 the `!cat ~/.secrets/enmaas-key` request-time key read. Note: unlike
 omp, a bare apiKey string in pi is a literal — pi env interpolation is
 `$NAME`/`${NAME}`, which we don't use (command form only).
+
+## Harnesses
+
+Task-scoped pi configs (currently Slack), described in `harnesses/<name>/`
+and rendered to `~/.pi/harnesses/<name>/` by `install.py` (rules in the repo
+[AGENTS.md](../AGENTS.md)). `PI_CODING_AGENT_DIR` selects the whole config
+dir (pi 1.x), so settings, MCP servers, models, instructions and sessions are
+all per-harness.
+
+One setup, two entry points:
+
+```sh
+~/.pi/harnesses/slack/pi -p "summarize #team"   # one-off
+```
+
+- T3 Code: Settings → Providers → pi → add an instance (`pi-slack`, display
+  name "Pi (Slack)") with **binary path** `~/.pi/harnesses/slack/pi`. T3
+  accepts any executable there and the instance gets its own model-picker
+  entry; a project override can enable it for one project only.
+- The launcher locates its own directory, sets `PI_CODING_AGENT_DIR` and
+  `NODE_EXTRA_CA_CERTS` (T3 does not run the `~/.bashrc.d/pi.rc` function),
+  and passes the flags (`--no-skills --exclude-tools …`).
+
+Slack prerequisites, outside the repo and never committed:
+
+| file | mapped to |
+|------|-----------|
+| `~/.secrets/slack-xoxc` | `SLACK_XOXC_TOKEN` |
+| `~/.secrets/slack-xoxd` | `SLACK_XOXD_TOKEN` |
+
+They are read at MCP connect time (`{file:…}` → `!cat`), so neither a CLI nor
+a T3 launch needs exported variables. Missing files fail softly: the value is
+empty and Slack answers `invalid_auth`.
+
+The harness owns the `slack-mcp` definition (`harnesses/slack/harness.jsonc`)
+instead of referencing `mcp/servers.jsonc`, so no regular agent renders it.
+
+`SLACK_MCP_WORKSPACE` is not read by the server (the image's script and the
+upstream docs agree); the harness only uses the workspace domain for
+permalinks, written into its `AGENTS.md`.
+
+`LOGS_CHANNEL_ID` is left unset: the current image (2026-10-26) writes audit
+lines to stderr instead of posting a log message per tool call. The previous
+image (2026-02-03) required the variable and posted to a channel, which is
+why the harness used to pin it to `""`; that is gone now.
+
+`SLACK_MCP_READ_ONLY` is a launcher passthrough (`env: null` in
+`harness.jsonc`): set it to `1` in the caller's environment and the server
+does not register write tools. It cannot be set per T3 thread (T3 has no
+per-thread env), but `SLACK_MCP_READ_ONLY=1 ~/.pi/harnesses/slack/pi …` works.
+Do not put it in the MCP `environment` as `{env:…}`: pi renders that to
+`!printenv`, which fails and stops the server when the variable is unset.
+
+Images: the Slack server has no attachment tool, so `slack.py image <channel>
+<ts> [--index N]` downloads the attachment to `/tmp/slack-image-*` with the
+xoxc/xoxd tokens; the agent `read`s that path, pi sends images as attachments,
+and the DeepSeek EnMaaS model accepts them.
+
+### Helper and approvals
+
+`harnesses/slack/slack.py` (symlinked into the config dir; stdlib only, run
+through `uv` via its PEP 723 shebang — no pip install) is the read-only
+lookup the prompt tells the agent to use: `whoami`, `channel`, `image`,
+`search`, `mentions`, `activity`, `history`, `replies`, printing
+`ISO | channel (id) | @user | text | permalink` plus `[files: …]`.
+`mentions` searches `<@user-id>` (name search misses the `@Patrick Martin`
+form, and GitHub reminders count); `activity` lists threads the user is in,
+with who spoke last and whether it needs a reply. It exists because the MCP
+returns compact strings, `whoami` gives no user id, and this Enterprise Grid
+token rejects `users.conversations` and `chat.getPermalink`
+(`enterprise_is_restricted`) — channel names come from `conversations.info`
+or an `in:#name` search instead. Identity (`patmarti`, `U029NSDRB62`, the
+workspace URL) is in `AGENTS.md`, so no discovery round. Unread DMs are the
+MCP's `get_unread_direct_messages` (browser-session only, works here).
+
+Approvals are T3's by default, but the harness owns the policy: T3 injects an
+extension whose `tool_call` hook prompts for every MCP/`bash`/`codemode` call
+unless the runtime mode is `full-access` (pi itself never asks; its settings
+have no permission keys). The launcher sets
+`T3_PI_RUNTIME_MODE=full-access` (via `env` in `harness.jsonc`) to silence
+that blanket behaviour, and `guard.ts` decides what actually needs approval
+(below). T3 still shows the thread's own mode; remove the `env` entry to
+restore T3's policy instead.
+
+### Guard
+
+`harnesses/slack/guard.ts` is linked into the config dir and loaded with
+`--extension`. It is the boundary behind the full-access override:
+
+- `bash`: only `~/.pi/harnesses/slack/slack.py`, with no shell chaining.
+- `read`: only `/tmp/slack-image-*`.
+- `edit` / `write`: blocked.
+- Slack MCP tools: `readOnlyHint` tools pass; write tools need approval.
+- `codemode` is allowed — it is a QuickJS sandbox with no fs/net, and every
+  nested tool call hits the same `tool_call` hook and is checked.
+- `tool_search` passes; anything else needs approval. With no UI (print/JSON
+  modes) such calls are blocked instead, except Slack MCP write tools when
+  `SLACK_HARNESS_ALLOW_WRITES=1` is set.

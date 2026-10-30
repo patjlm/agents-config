@@ -41,30 +41,9 @@
     // Red Hat internal deployment; OAuth 2.1 (PKCE, dynamic client
     // registration) — no headers: each agent authenticates per user.
     "url": "https://gworkspace.corp.redhat.com/mcp"
-  },
-  "slack-mcp": {
-    "type": "local",
-    "command": [
-      "podman",
-      "run",
-      "-i",
-      "--rm",
-      "-e",
-      "SLACK_XOXC_TOKEN",
-      "-e",
-      "SLACK_XOXD_TOKEN",
-      "-e",
-      "MCP_TRANSPORT=stdio",
-      "-e",
-      "LOGS_CHANNEL_ID",
-      "quay.io/redhat-ai-tools/slack-mcp"
-    ],
-    "environment": {
-      "SLACK_XOXC_TOKEN": "{env:SLACK_MCP_XOXC_TOKEN}",
-      "SLACK_XOXD_TOKEN": "{env:SLACK_MCP_XOXD_TOKEN}",
-      "LOGS_CHANNEL_ID": "{env:SLACK_MCP_LOGS_CHANNEL_ID}"
-    }
   }
+  // Slack is harness-only: defined in harnesses/slack/harness.jsonc, so no
+  // regular agent renders it (see the harness rules in AGENTS.md).
   // GitHub MCP disabled — prefer gh CLI for now.
   // "github": {
   //   "type": "remote",
