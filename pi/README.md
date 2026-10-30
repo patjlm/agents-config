@@ -43,6 +43,39 @@ Untouched by the installer: `auth.json`, `sessions/`, `bin/`, `npm/`
 - On 0.84.x the `compat`/`samplingParams` keys in models.json are
   ignored (GLM still worked in a live smoke test); 1.x applies them.
 
+## Corporate CA trust (internal HTTPS endpoints)
+
+pi's Node runtime ships the Mozilla root store only, so internal endpoints
+signed by the Red Hat corporate CA fail with
+`SELF_SIGNED_CERT_IN_CHAIN` — e.g. the Google Workspace MCP server
+(`https://gworkspace.corp.redhat.com/mcp`, in `mcp/servers.jsonc`). curl
+and omp are unaffected (system store / native TLS).
+
+pi has no setting for extra CAs: its settings schema exposes only
+`httpProxy`, and `pi mcp` shell commands explicitly do not load
+extensions, so an in-process `tls.setDefaultCACertificates` extension
+cannot cover `pi mcp login`/`list`. The trust is injected per invocation
+from a shell drop-in **outside this repo** (the installer never touches
+shell rc files — recreate it on a new machine):
+
+```sh
+# ~/.bashrc.d/pi.rc
+pi() {
+  NODE_EXTRA_CA_CERTS=/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem command pi "$@"
+}
+```
+
+- Scoped to pi processes only; every other Node app keeps the bundled store.
+- Interactive bash only (`~/.bashrc` sources `~/.bashrc.d/*`); other launch
+  paths (scripts, GUI) need their own wrapper.
+- Verified alternative: `NODE_USE_SYSTEM_CA=1` (Node >= 24.6) adds the OS
+  store without hardcoding a path — on Fedora `/etc/ssl/cert.pem` symlinks
+  to the same bundle. Swap it into the function if the path changes.
+- Calling `pi` outside the function (e.g. `env pi …`) still shows
+  `fetch failed`.
+
+Verify: `pi mcp list` → `google-workspace: connected, 101 tools`.
+
 ## enmaas-anthropic provider quirks
 
 Claude models over EnMaaS's anthropic-compatible endpoint (`api:
