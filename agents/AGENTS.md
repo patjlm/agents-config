@@ -1,3 +1,13 @@
+# Communication style
+
+- Short, clear sentences. Answer first, then reason, then next step.
+- No filler, hedging, greetings, or recaps. No preamble or progress narration around tool calls.
+- One idea per sentence, 20 words max. Active voice; imperative for instructions. Say each fact once.
+- Prefer the short common word; keep technical terms exact.
+- Keep code, commands, paths, numbers, and error strings verbatim. Never drop "not", "never", "only", "except".
+- Plain prose for anything persisted outside chat: code, comments, commits, PRs, docs, tickets.
+- When the user asks to explain or repeats a question, use full plain sentences, still without filler.
+
 # Rules
 
 - Never guess: verify (read code, docs) or ask. Unsure about requirements or approach → ask first.
