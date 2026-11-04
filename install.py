@@ -39,7 +39,10 @@ Install mechanisms (see AGENTS.md):
       are driven by the same settings file and applied via the claude CLI.
       mcp/servers.jsonc is translated into claude/plugins/mcp/.mcp.json (our
       own plugin under the patjlm-agents-config marketplace, gitignored;
-      secrets never inlined).
+      secrets never inlined). Price rates for the free EnMaaS models cannot
+      live in user settings (Claude Code reads modelPricing only from the
+      root-owned managed settings file), so the installer reports that file's
+      required content instead of writing it.
     - instructions: agents/AGENTS.md (common guidelines) + optional
       <agent>/AGENTS.md (agent-specific additions) → combined and written
       to each agent's global instructions file (~/.claude/CLAUDE.md,
@@ -641,6 +644,19 @@ CLAUDE_HOME = HOME / ".claude"
 # like any other plugin).
 MCP_PLUGIN_TARGET = CLAUDE_SRC / "plugins" / "mcp" / ".mcp.json"
 
+# Price rates for the free EnMaaS models, for Claude Code's spend figures.
+# pi/opencode/omp take a per-model `cost` in their own model configs; Claude
+# Code has no such key for user settings — it honors `modelPricing.overrides`
+# only from the managed (policy-tier) settings file, which is root-owned and
+# machine-wide, so this installer never writes it: it reports the required
+# content and lets a human apply it. Only GLM and DeepSeek are free on EnMaaS
+# (the gpt/gemini/claude models bill at negotiated rates we don't know).
+ENMAAS_FREE_MODELS = ("rits/zai-org/glm-5-3", "rits/deepseek-ai/DeepSeek-V4.1-Flash-1017")
+CLAUDE_MANAGED_DIR = Path(
+    "/Library/Application Support/ClaudeCode" if sys.platform == "darwin" else "/etc/claude-code"
+)
+CLAUDE_MANAGED_SETTINGS = CLAUDE_MANAGED_DIR / "managed-settings.json"
+
 
 def load_claude_settings(config: dict) -> dict:
     """Render claude/settings.jsonc.j2 (comments + {{ home }}/{{ repo }}
@@ -671,6 +687,68 @@ def claude_symlink_map() -> dict[Path, Path]:
             if src.is_file():
                 links[CLAUDE_HOME / sub / src.name] = src
     return links
+
+
+def claude_managed_pricing(config: dict) -> None:
+    """Report whether the managed settings file prices the free EnMaaS models
+    at zero, showing the required content (and a diff of the existing file).
+
+    Claude Code ignores `modelPricing` in user settings and no env var covers
+    it, so `/cost`, the status line and the SDK totals price these models at a
+    guessed Claude rate until the policy-tier file carries the rates. Writing
+    it needs root and affects every user of the machine — hence report only.
+    Rows also carry the bare model id (the aux-model alias has no [1m]) and
+    the [1m] spelling the claude template selects.
+    """
+    if not config["enmaas"]["enabled"]:
+        return
+    zero = {"input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0}
+    rows = {f"{m}{sfx}": dict(zero) for m in ENMAAS_FREE_MODELS for sfx in ("", "[1m]")}
+    dest = CLAUDE_MANAGED_SETTINGS
+    existing: dict = {}
+    if dest.is_file():
+        try:
+            existing = json5_loads(dest.read_text())
+        except (OSError, ValueError) as e:
+            print(f"WARNING: cannot read {dest} ({e}) — check it by hand", file=sys.stderr)
+            return
+        if not isinstance(existing, dict):
+            print(f"WARNING: {dest} is not a JSON object — check it by hand", file=sys.stderr)
+            return
+    merged = json.loads(json.dumps(existing))
+    pricing = merged.setdefault("modelPricing", {})
+    if not isinstance(pricing, dict) or not isinstance(pricing.setdefault("overrides", {}), dict):
+        print(
+            f"WARNING: {dest} has a non-object modelPricing/overrides — check it by hand",
+            file=sys.stderr,
+        )
+        return
+    overrides = pricing["overrides"]
+    if all(overrides.get(key) == row for key, row in rows.items()):
+        print(f"unchanged: {dest} (modelPricing overrides)")
+        return
+    old_text = json.dumps(existing, indent=2) + "\n"
+    overrides.update(rows)
+    new_text = json.dumps(merged, indent=2) + "\n"
+    print(
+        f"NEEDS UPDATE: {dest}\n"
+        "  Claude Code honors modelPricing only in the managed (policy-tier)\n"
+        "  settings file, so the free EnMaaS models still price at a guessed\n"
+        "  Claude rate. This installer never writes it (root-owned, machine-wide);\n"
+        "  apply the content below by hand, e.g.\n"
+        f"    sudo install -D -m 644 <file-with-this-content> {dest}"
+    )
+    if dest.is_file():
+        sys.stdout.writelines(
+            difflib.unified_diff(
+                old_text.splitlines(keepends=True),
+                new_text.splitlines(keepends=True),
+                fromfile=f"{dest} (current)",
+                tofile=f"{dest} (with zero EnMaaS rates)",
+            )
+        )
+    else:
+        print(new_text, end="")
 
 
 def install_claude(servers: dict, config: dict, check_only: bool) -> bool:
@@ -717,6 +795,7 @@ def install_claude(servers: dict, config: dict, check_only: bool) -> bool:
         parse=json.loads,
         warn=drift_warn,
     )
+    claude_managed_pricing(config)
     return install_claude_plugins(servers, config, check_only)
 
 
