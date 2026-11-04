@@ -84,9 +84,10 @@ Install mechanisms (see AGENTS.md):
       litellm proxy, apiKey via !cat), pi/settings.json.j2 →
       ~/.pi/agent/settings.json (drift-aware — pi writes theme, packages,
       changelog version there), mcp.json (shared pi-family translation,
-      needs pi 1.x), AGENTS.md generation, and 1:1 symlinks for
-      extensions/ + settings/ (gathered from the pre-repo setup;
-      runtime-written *.config.json files stay unmanaged).
+      needs pi 1.x), AGENTS.md generation, 1:1 symlinks for extensions/ +
+      settings/ (gathered from the pre-repo setup; runtime-written
+      *.config.json files stay unmanaged), and pi/trust.jsonc → a rendered
+      ~/.pi/agent/trust.json (project trust, drift-aware).
     - harnesses: harnesses/<name>/harness.jsonc + AGENTS.md (task content) with
       <agent>/harness/ templates → ~/.pi/harnesses/<name>/: rendered mcp.json
       (selected servers + per-harness overrides) and settings.json (pinned
@@ -1478,6 +1479,65 @@ def patch_pi_vertex(check_only: bool) -> None:
         )
 
 
+# Project trust gates project settings, MCP servers, extensions, skills and
+# system-prompt files: without a saved decision, every fresh checkout (a T3
+# Code worktree under ~/dev/worktrees, say) starts with "the folder is not
+# trusted" and loads none of them. pi picks the nearest ancestor entry in
+# <config dir>/trust.json (dist/core/trust-manager.js:findNearestTrustEntry),
+# so one entry for ~/dev covers everything below it — bounded to our own
+# checkouts, unlike defaultProjectTrust: "always", which trusts any folder
+# anywhere, including third-party clones.
+PI_TRUST_FILE = REPO / "pi" / "trust.jsonc"
+
+
+def load_pi_trust() -> dict:
+    """pi/trust.jsonc — which project dirs each pi config dir trusts.
+
+    Shape: {"agent": [...], "harnesses": {"<name>": [...]}}, paths as
+    written (~ allowed, expanded and resolved here). Absent or empty list =
+    nothing trusted, and no entry to cover the dir.
+    """
+    data = json5_loads(PI_TRUST_FILE.read_text())
+    if not isinstance(data, dict):
+        raise ValueError("expected an object")
+    unknown = set(data) - {"agent", "harnesses"}
+    if unknown:
+        raise ValueError(f"unknown keys: {', '.join(sorted(unknown))}")
+    trust = {"agent": data.get("agent", []), "harnesses": data.get("harnesses", {})}
+    if not isinstance(trust["harnesses"], dict):
+        raise ValueError("'harnesses' must be an object")
+    for label, dirs in [("agent", trust["agent"]), *trust["harnesses"].items()]:
+        if not isinstance(dirs, list) or not all(isinstance(d, str) for d in dirs):
+            raise ValueError(f"{label}: expected a list of directory paths")
+    return trust
+
+
+def trust_pi_dirs(agent_dir: Path, dirs: list[str], check_only: bool) -> bool:
+    """Render pi/trust.jsonc's dirs for agent_dir → <agent_dir>/trust.json.
+
+    pi keeps a trust store per config dir (`/trust` writes it, the nearest
+    ancestor entry wins); the repo owns its content for the dirs it declares,
+    so a decision pi saved interactively shows up as drift and is warned
+    about before the overwrite (backup under <agent_dir>/backups) — lasting
+    ones belong in pi/trust.jsonc. Keys are canonical paths: pi resolves
+    them before matching, so they are resolved here too.
+    """
+    data = {str(Path(d).expanduser().resolve()): True for d in dirs}
+
+    def drift_warn(old: dict, backup_path: Path | None) -> None:
+        warn_drift(f"{agent_dir}/trust.json", "pi/trust.jsonc", old, data, backup_path)
+
+    write_if_changed(
+        agent_dir / "trust.json",
+        json.dumps(dict(sorted(data.items())), indent=2) + "\n",
+        check_only,
+        root=agent_dir,
+        parse=json.loads,
+        warn=drift_warn,
+    )
+    return True
+
+
 def pi_symlink_map() -> dict[Path, Path]:
     """dest in ~/.pi/agent -> source file in the repo.
 
@@ -1541,7 +1601,13 @@ def install_pi(servers: dict, config: dict, check_only: bool) -> bool:
     write_if_changed(
         PI_HOME / "mcp.json", pi_mcp_json(servers, "pi"), check_only, parse=json.loads
     )
-    return True
+    try:
+        trust = load_pi_trust()
+    except ValueError as e:
+        print(f"INVALID: pi/trust.jsonc — {e}", file=sys.stderr)
+        return False
+    print("valid: pi/trust.jsonc")
+    return trust_pi_dirs(PI_HOME, trust["agent"], check_only)
 
 
 # --- harnesses/ --------------------------------------------------------------
@@ -1715,7 +1781,14 @@ def install_pi_harness(harness: dict, servers: dict, check_only: bool) -> bool:
     # One provider set for every pi config dir; the harness narrows the model
     # in settings.json. Depends on the pi section having rendered models.json.
     link(dest / "models.json", PI_HOME / "models.json", check_only, root=dest)
-    return True
+    # Trust is stored per config dir, so the harness renders its own from
+    # pi/trust.jsonc (an absent or empty list trusts nothing).
+    try:
+        trusted = load_pi_trust()["harnesses"].get(name, [])
+    except ValueError as e:
+        print(f"INVALID: pi/trust.jsonc — {e}", file=sys.stderr)
+        return False
+    return trust_pi_dirs(dest, trusted, check_only)
 
 
 # --- main --------------------------------------------------------------------

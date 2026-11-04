@@ -1,0 +1,18 @@
+{
+  // Project-trust dirs per pi config dir. pi gates project settings, MCP
+  // servers, extensions, skills and system-prompt files behind trust and
+  // resolves it by the nearest ancestor entry in <config dir>/trust.json —
+  // so one dir here covers all its subdirectories ("~/dev" also covers
+  // every ~/dev/worktrees checkout, e.g. a T3 Code worktree).
+  //
+  // That trust.json is pi's own store (/trust and the startup prompt write
+  // it), so install.py only ADDS these entries: decisions saved there for
+  // other dirs survive, and an empty list adds nothing.
+  //
+  // "agent" = ~/.pi/agent, "harnesses" = ~/.pi/harnesses/<name>.
+  "agent": ["~/dev"],
+  "harnesses": {
+    // empty: the Slack harness works in one known checkout, no trust needed
+    "slack": []
+  }
+}
