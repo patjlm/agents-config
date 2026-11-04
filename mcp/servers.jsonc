@@ -11,6 +11,8 @@
     "type": "remote",
     "url": "https://ship-help-mcp-continuous-release-toolting--ship-help-bot.apps.gpc.ocp-hub.prod.psi.redhat.com/personas/gcp_hcp_engineering/mcp",
     "oauth": false,
+    // disabled: unused, and the deployed bot answers 503. Flip to re-enable.
+    "disabled": true,
     "headers": {
       // opencode reads the token file at runtime
       "Authorization": "Bearer {file:~/.secrets/chai-bot-gcp-hcp-engineering-token}"
