@@ -367,6 +367,16 @@
           "limit": {
             "context": 1050000,
             "output": 65536
+          },
+          // Free on EnMaaS — explicit zero rates so the session cost
+          // reads $0.
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cache": {
+              "read": 0,
+              "write": 0
+            }
           }
         },
         // Secondary option next to GLM — vision-capable (verified: image
@@ -382,6 +392,15 @@
           "capabilities": {
             "input": ["text", "image"],
             "output": ["text"]
+          },
+          // Free on EnMaaS, like GLM.
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cache": {
+              "read": 0,
+              "write": 0
+            }
           }
         }
       }

@@ -57,7 +57,8 @@ providers:
   # gpt profile models over the responses API — the completions API rejects
   # function tools with reasoning effort (same finding as opencode/codex).
   # These entries are constructed from our opencode limits, not proven by
-  # the colleague config the GLM entry came from.
+  # the colleague config the GLM entry came from. No cost block: EnMaaS bills
+  # them at negotiated rates we don't know (only GLM and DeepSeek are free).
   enmaas-openai:
     baseUrl: https://api.enmaas.devshift.net/v1
     apiKey: "!cat {{ home }}/.secrets/enmaas-key"
@@ -70,11 +71,6 @@ providers:
           - text
         contextWindow: 1050000
         maxTokens: 128000
-        cost:
-          input: 0
-          output: 0
-          cacheRead: 0
-          cacheWrite: 0
       - id: gpt-6-sol
         name: GPT-6 Sol (EnMaaS)
         reasoning: true
@@ -82,11 +78,6 @@ providers:
           - text
         contextWindow: 1050000
         maxTokens: 128000
-        cost:
-          input: 0
-          output: 0
-          cacheRead: 0
-          cacheWrite: 0
       - id: gpt-6-astra
         name: GPT-6 Astra (EnMaaS)
         reasoning: true
@@ -94,11 +85,6 @@ providers:
           - text
         contextWindow: 1050000
         maxTokens: 128000
-        cost:
-          input: 0
-          output: 0
-          cacheRead: 0
-          cacheWrite: 0
   # Claude models over EnMaaS's anthropic-compatible endpoint. omp derives the
   # thinking mode from the model id: adaptive on every Claude 5.5 model
   # (opus/sonnet/haiku) — all three reasoning, all verified live. Three
@@ -110,6 +96,8 @@ providers:
   #   structured_outputs"), which omp would otherwise set on builtin edit tools.
   # - compat.supportsContextManagement: false — the gateway rejects the
   #   experimental context_management field.
+  # No cost block: EnMaaS bills these at negotiated rates we don't know (only
+  # GLM and DeepSeek are free).
   enmaas-anthropic:
     baseUrl: https://api.enmaas.devshift.net
     apiKey: "!cat {{ home }}/.secrets/enmaas-key"
@@ -128,11 +116,6 @@ providers:
           - image
         contextWindow: 1000000
         maxTokens: 128000
-        cost:
-          input: 0
-          output: 0
-          cacheRead: 0
-          cacheWrite: 0
       - id: claude-sonnet-5-5
         name: Claude Sonnet 5.5 (EnMaaS)
         reasoning: true
@@ -141,11 +124,6 @@ providers:
           - image
         contextWindow: 1000000
         maxTokens: 128000
-        cost:
-          input: 0
-          output: 0
-          cacheRead: 0
-          cacheWrite: 0
       - id: claude-haiku-5-5
         name: Claude Haiku 5.5 (EnMaaS)
         reasoning: true
@@ -154,11 +132,6 @@ providers:
           - image
         contextWindow: 1000000
         maxTokens: 128000
-        cost:
-          input: 0
-          output: 0
-          cacheRead: 0
-          cacheWrite: 0
   # Fallback when EnMaaS is down (config.jsonc enmaas.enabled=false) —
   # direct OpenAI with the personal key file, mirroring opencode's
   # fallback. install.py then routes modelRoles.default here.
@@ -174,8 +147,3 @@ providers:
           - text
         contextWindow: 1050000
         maxTokens: 128000
-        cost:
-          input: 0
-          output: 0
-          cacheRead: 0
-          cacheWrite: 0
