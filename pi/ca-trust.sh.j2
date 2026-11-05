@@ -1,0 +1,8 @@
+# pi's Node runtime ships the Mozilla roots only, so trust the system CA
+# store here. Without it, internal HTTPS endpoints signed by the corporate CA
+# (e.g. the Google Workspace MCP server) fail with SELF_SIGNED_CERT_IN_CHAIN /
+# "fetch failed" — see "Corporate CA trust" in pi/README.md.
+if [ -z "${NODE_EXTRA_CA_CERTS:-}" ] && [ -f /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem ]; then
+  NODE_EXTRA_CA_CERTS=/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem
+  export NODE_EXTRA_CA_CERTS
+fi

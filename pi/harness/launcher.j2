@@ -11,14 +11,7 @@ here=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 PI_CODING_AGENT_DIR=$here
 export PI_CODING_AGENT_DIR
 
-# pi's Node runtime ships the Mozilla roots only, and harness invocations do
-# not go through the ~/.bashrc.d/pi.rc shell function: trust the system store
-# here so corporate HTTPS endpoints work when T3 Code launches us.
-if [ -z "${NODE_EXTRA_CA_CERTS:-}" ] && [ -f /etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem ]; then
-  NODE_EXTRA_CA_CERTS=/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem
-  export NODE_EXTRA_CA_CERTS
-fi
-
+{% include "pi/ca-trust.sh.j2" %}
 # `env` from harness.jsonc. This runs after T3 sets its own variables, so it
 # wins over them — that is deliberate (see the comment in harness.jsonc and
 # pi/README.md): T3 still shows the thread's runtime mode, but the harness runs

@@ -74,7 +74,17 @@ pi() {
 - Calling `pi` outside the function (e.g. `env pi …`) still shows
   `fetch failed`.
 
-Verify: `pi mcp list` → `google-workspace: connected, 101 tools`.
+Launch paths that never see the shell function need the repo-managed
+wrapper instead: `install.py` renders `~/.pi/agent/launcher/pi` from
+`pi/launcher.j2` (the same CA snippet `pi/ca-trust.sh.j2` as the harness
+launchers, no `PI_CODING_AGENT_DIR`), so point T3 Code at it —
+Settings → Providers → pi → **binary path** `~/.pi/agent/launcher/pi`.
+Without it every T3 pi session reports `google-workspace: failed; fetch
+failed` at startup, because T3 starts the provider from its own process
+environment (`~/.local/bin/pi` carries no CA trust).
+
+Verify: `pi mcp list` → `google-workspace: connected, 101 tools`; in T3 the
+same via `/mcp`.
 
 ## enmaas-anthropic provider quirks
 

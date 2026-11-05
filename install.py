@@ -86,8 +86,10 @@ Install mechanisms (see AGENTS.md):
       changelog version there), mcp.json (shared pi-family translation,
       needs pi 1.x), AGENTS.md generation, 1:1 symlinks for extensions/ +
       settings/ (gathered from the pre-repo setup; runtime-written
-      *.config.json files stay unmanaged), and pi/trust.jsonc → a rendered
-      ~/.pi/agent/trust.json (project trust, drift-aware).
+      *.config.json files stay unmanaged), pi/trust.jsonc → a rendered
+      ~/.pi/agent/trust.json (project trust, drift-aware), and an
+      executable ~/.pi/agent/launcher/pi wrapper (corporate CA trust) that
+      T3 Code uses as the pi provider binary path.
     - harnesses: harnesses/<name>/harness.jsonc + AGENTS.md (task content) with
       <agent>/harness/ templates → ~/.pi/harnesses/<name>/: rendered mcp.json
       (selected servers + per-harness overrides) and settings.json (pinned
@@ -1559,8 +1561,10 @@ def install_pi(servers: dict, config: dict, check_only: bool) -> bool:
     + the carried-over litellm proxy, apiKey via !cat at request time),
     settings.json (drift-aware — pi itself writes theme, packages,
     changelog version there), mcp.json (shared pi-family translation;
-    needs pi 1.x), AGENTS.md (common guidelines), and 1:1 symlinks for
-    extensions + pi-vertex settings (gathered from the pre-repo setup)."""
+    needs pi 1.x), AGENTS.md (common guidelines), 1:1 symlinks for
+    extensions + pi-vertex settings (gathered from the pre-repo setup),
+    the launcher wrapper (corporate CA trust for T3 Code, which does not
+    run the shell rc function) and trust.json."""
     write_if_changed(PI_HOME / "AGENTS.md", instructions_text("pi"), check_only)
     for dest, source in pi_symlink_map().items():
         link(dest, source, check_only, root=PI_HOME)
@@ -1601,6 +1605,14 @@ def install_pi(servers: dict, config: dict, check_only: bool) -> bool:
     write_if_changed(
         PI_HOME / "mcp.json", pi_mcp_json(servers, "pi"), check_only, parse=json.loads
     )
+    # Wrapper for launch paths that do not run the ~/.bashrc.d/pi.rc shell
+    # function (T3 Code starts the pi provider from its own environment), so
+    # internal HTTPS MCP endpoints keep working there. Not PI_CODING_AGENT_DIR:
+    # this stays the default config dir.
+    launcher = JINJA.get_template("pi/launcher.j2").render(home=str(HOME))
+    write_if_changed(PI_HOME / "launcher" / "pi", launcher, check_only)
+    if not check_only:
+        (PI_HOME / "launcher" / "pi").chmod(0o700)
     try:
         trust = load_pi_trust()
     except ValueError as e:
