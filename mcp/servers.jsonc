@@ -32,7 +32,7 @@
     "type": "local",
     "command": ["uv", "run", "--script", "decision_mcp.py"],
     "cwd": "/home/patmarti/dev/llama-cpp-bin",
-    "disabled": false,
+    "disabled": true,
     "timeout": {
       "catalog": 180000,
       "execution": 180000
