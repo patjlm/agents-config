@@ -1605,6 +1605,15 @@ def install_pi(servers: dict, config: dict, check_only: bool) -> bool:
     write_if_changed(
         PI_HOME / "mcp.json", pi_mcp_json(servers, "pi"), check_only, parse=json.loads
     )
+    # pi-web-access reads ~/.pi/agent/web-search.json (or the config dir pi
+    # was started with). Pinned to DuckDuckGo and to direct fetches: no
+    # hosted extractor, no curator summary workflow.
+    write_if_changed(
+        PI_HOME / "web-search.json",
+        (REPO / "pi" / "web-search.json").read_text(),
+        check_only,
+        parse=json.loads,
+    )
     # Wrapper for launch paths that do not run the ~/.bashrc.d/pi.rc shell
     # function (T3 Code starts the pi provider from its own environment), so
     # internal HTTPS MCP endpoints keep working there. Not PI_CODING_AGENT_DIR:

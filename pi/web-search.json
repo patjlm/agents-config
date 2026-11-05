@@ -1,0 +1,8 @@
+{
+  "provider": "duckduckgo",
+  "workflow": "none",
+  "fetchRouting": {
+    "providers": ["http"],
+    "allowRemoteHostedProviders": false
+  }
+}
