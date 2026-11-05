@@ -5,26 +5,19 @@ supported agent by `install.py`, unless their `SKILL.md` frontmatter has
 `targets:` (see AGENTS.md).
 
 Third-party skills are unmodified copies; their licenses are kept in
-[`../third-party-licenses/`](../third-party-licenses/).
+[`../third-party-licenses/`](../third-party-licenses/). Kept caveman-derived
+skills and removal candidates: [`README.md`](README.md).
 
 ## Imported 2026-10-29 from `~/.agents/skills` (formerly managed by the `skills` CLI)
 
 | Skill | Upstream | Path in upstream | License |
 |---|---|---|---|
-| `cavecrew` | `JuliusBrussee/caveman` | `skills/cavecrew/SKILL.md` | Apache-2.0 |
 | `caveman` | `JuliusBrussee/caveman` | `skills/caveman/SKILL.md` | Apache-2.0 |
 | `caveman-commit` | `JuliusBrussee/caveman` | `skills/caveman-commit/SKILL.md` | Apache-2.0 |
 | `caveman-compress` | `JuliusBrussee/caveman` | `skills/caveman-compress/SKILL.md` | Apache-2.0 |
-| `caveman-discover` | `JuliusBrussee/caveman` | `skills/caveman-discover/SKILL.md` | Apache-2.0 |
-| `caveman-evidence-review` | `JuliusBrussee/caveman` | `skills/caveman-evidence-review/SKILL.md` | Apache-2.0 |
 | `caveman-explore` | `JuliusBrussee/caveman` | `skills/caveman-explore/SKILL.md` | Apache-2.0 |
 | `caveman-help` | `JuliusBrussee/caveman` | `skills/caveman-help/SKILL.md` | Apache-2.0 |
-| `caveman-learn` | `JuliusBrussee/caveman` | `skills/caveman-learn/SKILL.md` | Apache-2.0 |
-| `caveman-manage` | `JuliusBrussee/caveman` | `skills/caveman-manage/SKILL.md` | Apache-2.0 |
-| `caveman-optimize` | `JuliusBrussee/caveman` | `skills/caveman-optimize/SKILL.md` | Apache-2.0 |
 | `caveman-review` | `JuliusBrussee/caveman` | `skills/caveman-review/SKILL.md` | Apache-2.0 |
-| `caveman-setup` | `JuliusBrussee/caveman` | `skills/caveman-setup/SKILL.md` | Apache-2.0 |
-| `caveman-stats` | `JuliusBrussee/caveman` | `skills/caveman-stats/SKILL.md` | Apache-2.0 |
 | `investigate-first` | `JuliusBrussee/caveman` | `skills/investigate-first/SKILL.md` | Apache-2.0 |
 | `lean-build` | `JuliusBrussee/caveman` | `skills/lean-build/SKILL.md` | Apache-2.0 |
 | `migration` | `JuliusBrussee/caveman` | `skills/migration/SKILL.md` | Apache-2.0 |
