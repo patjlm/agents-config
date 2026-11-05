@@ -10,7 +10,7 @@
   // other dirs survive, and an empty list adds nothing.
   //
   // "agent" = ~/.pi/agent, "harnesses" = ~/.pi/harnesses/<name>.
-  "agent": ["~/dev"],
+  "agent": ["~/dev", "~/.t3/worktrees"],
   "harnesses": {
     // empty: the Slack harness works in one known checkout, no trust needed
     "slack": []
