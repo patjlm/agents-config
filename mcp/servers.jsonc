@@ -7,6 +7,12 @@
     // codex: remote OAuth not wired up — add via `codex mcp add` if needed
     "codex": { "exclude": true }
   },
+  "categorizer": {
+    // Tailscale host on the home LAN — unreachable off-tailnet, so protocols
+    // that hard-fail on connect should stay lazy where the agent allows it.
+    "type": "remote",
+    "url": "http://raspberrypi.tail496359.ts.net:9098/mcp/"
+  },
   "chai-bot-gcp-hcp-engineering": {
     "type": "remote",
     "url": "https://ship-help-mcp-continuous-release-toolting--ship-help-bot.apps.gpc.ocp-hub.prod.psi.redhat.com/personas/gcp_hcp_engineering/mcp",
