@@ -10,9 +10,10 @@
   "env": {
     "ENABLE_TOOL_SEARCH": "auto:0",
 {% if enmaas_enabled and aux_model %}
-    // aux_model (config.jsonc): this free EnMaaS model also covers cheap
-    // auxiliary usage — the haiku alias (background tasks) and the
-    // auto-mode classifier below.
+    // aux_model (config.jsonc): this free EnMaaS model covers the haiku
+    // alias (background tasks). It does not affect the auto-mode
+    // classifier, which defaults to claude-sonnet-5
+    // (claude/auto-mode-classifier.md).
     "ANTHROPIC_DEFAULT_HAIKU_MODEL": "{{ aux_model }}",
 {% else %}
     "ANTHROPIC_DEFAULT_HAIKU_MODEL": "claude-haiku-5-5",
@@ -22,11 +23,21 @@
     "ANTHROPIC_BASE_URL": "https://api.enmaas.devshift.net",
     "CLAUDE_CODE_USE_VERTEX": "",
     "CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY": "1",
-    // EnMaaS doesn't implement the server-side auto-mode safety review
-    // (safeguards field / safeguard_results) — verified: with =1 the extra
-    // fields are ignored and claude falls back to the same client-side
-    // classifier. Classifier details: see claude/auto-mode-classifier.md.
-    "CLAUDE_CODE_AUTO_MODE_SERVER": "0"
+    // EnMaaS returns no verdict for the server-side auto-mode review (the
+    // `safeguards` field): 2.1.318 logs server_no_result and latches to its
+    // own classifier for the session, so =1 costs a round-trip plus a
+    // "session isn't eligible" notice and buys nothing. =0 is what Anthropic
+    // documents for gateways that can't pass safeguards/safeguard_results
+    // through, and it keeps the notice away. Server-side review would be
+    // unbilled if EnMaaS ever passes the field through.
+    // Classifier details: see claude/auto-mode-classifier.md.
+    "CLAUDE_CODE_AUTO_MODE_SERVER": "0",
+    // Auto-mode classifier pinned to the free DeepSeek model: sonnet-5-class
+    // speed (measured 1.15-2.8s per decision vs 15.6-27.7s on GLM) without
+    // Claude quota. Pinned means no demotion — an unavailable model denies
+    // instead of falling back; comment this out to use the billed sonnet-5
+    // default, which degrades to the session model. EnMaaS-only model id.
+    "CLAUDE_CODE_AUTO_MODE_MODEL": "rits/deepseek-ai/DeepSeek-V4.1-Flash-1017[1m]"
 {% else %}
     // enmaas disabled (config.jsonc): Vertex via gcloud ADC
     "CLAUDE_CODE_USE_VERTEX": "1"
