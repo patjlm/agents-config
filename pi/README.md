@@ -125,8 +125,8 @@ anthropic-messages`, baseUrl without `/v1` — the SDK appends
 ## Verifying
 
 ```sh
-pi --list-models enmaas          # enmaas-glm/deepseek/openai/anthropic (+ litellm)
-pi -p "Reply with exactly: ok"   # live EnMaaS GLM round-trip
+pi --list-models enmaas          # enmaas-glm/deepseek/muse/openai/anthropic (+ litellm)
+pi -p "Reply with exactly: ok"   # live EnMaaS DeepSeek round-trip (the default)
 # anthropic provider (one per model family):
 pi -p --no-session --provider enmaas-anthropic --model claude-opus-5-5 -- "Reply with exactly: ok"
 pi -p --no-session --provider enmaas-anthropic --model claude-sonnet-5-5 -- "Reply with exactly: ok"

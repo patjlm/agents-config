@@ -78,7 +78,9 @@
     }
   },
 {% if enmaas_enabled %}
-  "model": "rits/zai-org/glm-5-3[1m]",
+  // default: the free, vision-capable EnMaaS DeepSeek ([1m] = 1M context
+  // alias; GLM is text-only)
+  "model": "rits/deepseek-ai/DeepSeek-V4.1-Flash-1017[1m]",
 {% else %}
   "model": "claude-sonnet-5-5",
 {% endif %}
@@ -86,13 +88,14 @@
     "options": [
 {% if enmaas_enabled %}
       {
+        // kept as an option next to the DeepSeek default — text-only
         "model": "rits/zai-org/glm-5-3[1m]",
         "label": "GLM 5.3",
         "description": "Hosted via EnMaaS"
       },
       {
-        // secondary option next to GLM — vision-capable over EnMaaS's
-        // anthropic-compatible endpoint (verified), unlike GLM
+        // the default — vision-capable over EnMaaS's anthropic-compatible
+        // endpoint (verified), unlike GLM
         "model": "rits/deepseek-ai/DeepSeek-V4.1-Flash-1017[1m]",
         "label": "DeepSeek V4.1 Flash",
         "description": "Hosted via EnMaaS"

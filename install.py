@@ -1012,14 +1012,15 @@ CODEX_HOME = HOME / ".codex"
 # Model profiles rendered as ~/.codex/<name>.config.toml, activated with
 # `codex --profile <name>` (profiles are separate files layered over
 # config.toml since codex 0.134): name -> (model, reasoning effort). config.toml
-# sets GLM's high effort globally, so each profile pins its model's own codex
-# default (as of codex 0.162) instead of inheriting it. The deepseek and
-# muse profiles are the secondary EnMaaS options next to the GLM default
-# (medium effort — low/high are accepted too, see CODEX_SYNTH_MODELS).
+# sets the DeepSeek default's medium effort globally, so each profile pins its
+# model's own codex default (as of codex 0.162) instead of inheriting it. The
+# glm, deepseek and muse profiles are the EnMaaS options next to each other
+# (see CODEX_SYNTH_MODELS for accepted effort levels).
 CODEX_PROFILES = {
     "gpt-luna": ("gpt-6-luna", "medium"),
     "gpt-sol": ("gpt-6-sol", "medium"),
     "gpt-astra": ("gpt-6-astra", "low"),
+    "glm": ("rits/zai-org/glm-5-3", "high"),
     "deepseek": ("rits/deepseek-ai/DeepSeek-V4.1-Flash-1017", "medium"),
     "muse": ("rits/meta-models/Muse-Spark-Open-816B-A42B-NVFP4", "medium"),
 }

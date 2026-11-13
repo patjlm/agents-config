@@ -1,5 +1,5 @@
-{% set default_provider = "enmaas-glm" if enmaas_enabled else "vertex" %}
-{% set default_model = "rits/zai-org/glm-5-3" if enmaas_enabled else "claude-opus-4-6" %}
+{% set default_provider = "enmaas-deepseek" if enmaas_enabled else "vertex" %}
+{% set default_model = "rits/deepseek-ai/DeepSeek-V4.1-Flash-1017" if enmaas_enabled else "claude-opus-4-6" %}
 {
   "defaultProvider": "{{ default_provider }}",
   "defaultModel": "{{ default_model }}",
