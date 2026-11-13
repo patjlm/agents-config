@@ -22,7 +22,7 @@ lags that.
 ## Verifying the install
 
 ```sh
-omp models list                 # enmaas-glm/deepseek/openai/anthropic (+ openai-key) providers
+omp models list                 # enmaas-glm/deepseek/muse/openai/anthropic (+ openai-key) providers
 omp config list | grep -E "modelRoles|advisor"   # default: enmaas-deepseek/rits/deepseek-ai/DeepSeek-V4.1-Flash-1017,
                                   # advisor: enmaas-glm/rits/zai-org/glm-5-3, advisor.enabled: true
 omp -p "Reply with exactly: ok"     # live EnMaaS DeepSeek round-trip
@@ -75,7 +75,10 @@ dropped (the single openai-key fallback would only review itself).
   flags, verified with a real completion). DeepSeek V4.1 Flash via
   `enmaas-deepseek` (completions API — developer role, penalties, image
   input, and function tools all verified directly against the API; no
-  compat flags needed, unlike GLM).
+  compat flags needed, unlike GLM). Muse Spark Open 816B via
+  `enmaas-muse` (completions API — developer role, function tools with
+  reasoning effort, image input, reasoning content all verified against
+  the API; `/v1/responses` and `/v1/messages` answer too).
 - **Proven live**: Claude Opus/Sonnet/Haiku 5.5 via `enmaas-anthropic`
   (anthropic-messages; adaptive thinking on all three; end-to-end
   `omp -p` round-trips for all three, with the overrides listed above).

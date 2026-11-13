@@ -96,6 +96,17 @@
         "model": "rits/deepseek-ai/DeepSeek-V4.1-Flash-1017[1m]",
         "label": "DeepSeek V4.1 Flash",
         "description": "Hosted via EnMaaS"
+      },
+      {
+        // third free option (Meta, 816B total / 42B active) — vision-capable.
+        // [1m] is a Claude Code alias for the same 1M window; drop it to use
+        // the plain id. Known issue, server-side fix pending: ToolSearch
+        // breaks skills on this model — if a skill reports its tools as
+        // unavailable, start claude with ENABLE_TOOL_SEARCH=false and
+        // CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1 for the session.
+        "model": "rits/meta-models/Muse-Spark-Open-816B-A42B-NVFP4[1m]",
+        "label": "Muse Spark Open 816B",
+        "description": "Hosted via EnMaaS"
       }
 {% else %}
       {

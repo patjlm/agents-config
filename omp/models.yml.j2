@@ -54,6 +54,33 @@ providers:
           cacheWrite: 0
         compat:
           supportsDeveloperRole: true
+  # Meta Muse Spark Open (816B total / 42B active, NVFP4) over the
+  # completions API — third free option next to GLM and DeepSeek, and
+  # vision-capable like DeepSeek. Verified live: developer role, function
+  # tools with reasoning effort, image input, reasoning_content on the way
+  # back. Never use the [1m] suffix here — that is a Claude Code alias for
+  # the same 1M window, and EnMaaS 404s on it. Limits not exposed by the
+  # EnMaaS API; announced 1M context, 64K output assumed like GLM.
+  enmaas-muse:
+    baseUrl: https://api.enmaas.devshift.net/v1
+    apiKey: "!cat {{ home }}/.secrets/enmaas-key"
+    api: openai-completions
+    models:
+      - id: rits/meta-models/Muse-Spark-Open-816B-A42B-NVFP4
+        name: Muse Spark Open 816B (EnMaaS)
+        reasoning: true
+        input:
+          - text
+          - image
+        contextWindow: 1000000
+        maxTokens: 65536
+        cost:
+          input: 0
+          output: 0
+          cacheRead: 0
+          cacheWrite: 0
+        compat:
+          supportsDeveloperRole: true
   # gpt profile models over the responses API — the completions API rejects
   # function tools with reasoning effort (same finding as opencode/codex).
   # These entries are constructed from our opencode limits, not proven by

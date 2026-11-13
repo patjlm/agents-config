@@ -652,9 +652,14 @@ MCP_PLUGIN_TARGET = CLAUDE_SRC / "plugins" / "mcp" / ".mcp.json"
 # Code has no such key for user settings — it honors `modelPricing.overrides`
 # only from the managed (policy-tier) settings file, which is root-owned and
 # machine-wide, so this installer never writes it: it reports the required
-# content and lets a human apply it. Only GLM and DeepSeek are free on EnMaaS
-# (the gpt/gemini/claude models bill at negotiated rates we don't know).
-ENMAAS_FREE_MODELS = ("rits/zai-org/glm-5-3", "rits/deepseek-ai/DeepSeek-V4.1-Flash-1017")
+# content and lets a human apply it. Only GLM, DeepSeek and Muse Spark are
+# free on EnMaaS (the gpt/gemini/claude models bill at negotiated rates we
+# don't know).
+ENMAAS_FREE_MODELS = (
+    "rits/zai-org/glm-5-3",
+    "rits/deepseek-ai/DeepSeek-V4.1-Flash-1017",
+    "rits/meta-models/Muse-Spark-Open-816B-A42B-NVFP4",
+)
 CLAUDE_MANAGED_DIR = Path(
     "/Library/Application Support/ClaudeCode" if sys.platform == "darwin" else "/etc/claude-code"
 )
@@ -1008,14 +1013,15 @@ CODEX_HOME = HOME / ".codex"
 # `codex --profile <name>` (profiles are separate files layered over
 # config.toml since codex 0.134): name -> (model, reasoning effort). config.toml
 # sets GLM's high effort globally, so each profile pins its model's own codex
-# default (as of codex 0.162) instead of inheriting it. The deepseek profile
-# is the secondary EnMaaS option next to the GLM default (medium effort —
-# Flash-class model; low/high are accepted too, see CODEX_SYNTH_MODELS).
+# default (as of codex 0.162) instead of inheriting it. The deepseek and
+# muse profiles are the secondary EnMaaS options next to the GLM default
+# (medium effort — low/high are accepted too, see CODEX_SYNTH_MODELS).
 CODEX_PROFILES = {
     "gpt-luna": ("gpt-6-luna", "medium"),
     "gpt-sol": ("gpt-6-sol", "medium"),
     "gpt-astra": ("gpt-6-astra", "low"),
     "deepseek": ("rits/deepseek-ai/DeepSeek-V4.1-Flash-1017", "medium"),
+    "muse": ("rits/meta-models/Muse-Spark-Open-816B-A42B-NVFP4", "medium"),
 }
 
 # {env:VAR} as a whole value (env entries in mcp/servers.jsonc)
@@ -1028,8 +1034,10 @@ ENV_VALUE_RE = re.compile(r"\{env:([A-Za-z_][A-Za-z0-9_]*)\}")
 # carry ~18K-char system prompts — too bulky and version-bound to commit).
 CODEX_CATALOG = CODEX_HOME / "model-catalog.json"
 # EnMaaS models absent from codex's bundled catalog: slug -> catalog spec.
-# GLM offers high effort only; DeepSeek Flash accepts low/medium/high
-# (verified against /v1/responses) and defaults to medium.
+# GLM offers high effort only; DeepSeek Flash and Muse Spark accept
+# low/medium/high (verified against /v1/responses) and default to medium.
+# input_modalities gates image attachments: DeepSeek and Muse Spark take
+# images over /v1/responses (verified), GLM does not.
 CODEX_SYNTH_MODELS = {
     "rits/zai-org/glm-5-3": {
         "display_name": "GLM 5.3",
@@ -1049,6 +1057,17 @@ CODEX_SYNTH_MODELS = {
             {"effort": "medium", "description": "Balanced reasoning depth"},
             {"effort": "high", "description": "Greater reasoning depth for complex problems"},
         ],
+        "input_modalities": ["text", "image"],
+    },
+    "rits/meta-models/Muse-Spark-Open-816B-A42B-NVFP4": {
+        "display_name": "Muse Spark Open 816B",
+        "default_reasoning_level": "medium",
+        "supported_reasoning_levels": [
+            {"effort": "low", "description": "Light reasoning for quick answers"},
+            {"effort": "medium", "description": "Balanced reasoning depth"},
+            {"effort": "high", "description": "Greater reasoning depth for complex problems"},
+        ],
+        "input_modalities": ["text", "image"],
     },
 }
 # Synthesized entries are derived from this bundled entry, but keep only the
@@ -1057,7 +1076,10 @@ CODEX_SYNTH_MODELS = {
 # to plain defaults — copying them breaks vLLM backends like GLM's and
 # DeepSeek's (supports_search_tool → "Unsupported input item type:
 # additional_tools", apply_patch_tool_type freeform → "Custom tools with a
-# grammar format are not supported").
+# grammar format are not supported"). input_modalities is the exception: it
+# only tells codex the backend takes images (verified for DeepSeek and Muse
+# Spark over /v1/responses) and is declared per model in
+# CODEX_SYNTH_MODELS.
 CODEX_GLM_TEMPLATE = "gpt-6-luna"
 CODEX_GLM_KEYS = (
     "shell_type",

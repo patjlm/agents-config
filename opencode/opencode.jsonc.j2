@@ -403,6 +403,33 @@
               "write": 0
             }
           }
+        },
+        // Third free option: Meta Muse Spark Open (816B total / 42B active,
+        // NVFP4), vision-capable like DeepSeek. Verified live on
+        // /v1/chat/completions: function tools plus reasoning effort, image
+        // input, developer role. Never add the [1m] suffix here — that is a
+        // Claude Code alias for the same 1M window and 404s elsewhere.
+        // Limits not exposed by the EnMaaS API; announced 1M context, 64K
+        // output assumed like GLM.
+        "rits/meta-models/Muse-Spark-Open-816B-A42B-NVFP4": {
+          "name": "Muse Spark Open 816B",
+          "limit": {
+            "context": 1000000,
+            "output": 65536
+          },
+          "capabilities": {
+            "input": ["text", "image"],
+            "output": ["text"]
+          },
+          // Free on EnMaaS, like GLM and DeepSeek.
+          "cost": {
+            "input": 0,
+            "output": 0,
+            "cache": {
+              "read": 0,
+              "write": 0
+            }
+          }
         }
       }
     },
