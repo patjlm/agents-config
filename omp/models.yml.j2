@@ -81,6 +81,48 @@ providers:
           cacheWrite: 0
         compat:
           supportsDeveloperRole: true
+  # Gemini 4 Neon over the completions API — the paid heavy-reasoning
+  # alternative to enmaas-anthropic's claude-opus-5-5. Verified live: function
+  # tools with reasoning_effort, image input, streaming, developer role.
+  # Needs the thought_signature replay in
+  # pi/extensions/gemini-thought-signature.ts (install.py links it into
+  # ~/.omp/agent/extensions): Vertex 400s a tool result whose
+  # assistant call carries no signature, and the OpenAI-compatible payload
+  # drops it. reasoning_effort takes minimal/low/medium/high/max — no "none",
+  # so thinking cannot be turned off (default high); xhigh is unmapped. Not on
+  # /v1/responses or the anthropic endpoint, so only the OpenAI-compatible
+  # agents can run it. Cost: Vertex list price per 1M tokens, passed through
+  # by EnMaaS (input $3.00, cache read $0.15, cache write $3.75, output
+  # $15.00 on the global endpoint; non-global $3.30/$0.165/$4.125/$16.50),
+  # from https://cloud.google.com/vertex-ai/generative-ai/pricing.
+  enmaas-google:
+    baseUrl: https://api.enmaas.devshift.net/v1
+    apiKey: "!cat {{ home }}/.secrets/enmaas-key"
+    api: openai-completions
+    models:
+      - id: gemini-4-neon
+        name: Gemini 4 Neon (EnMaaS)
+        reasoning: true
+        input:
+          - text
+          - image
+        contextWindow: 1000000
+        maxTokens: 65536
+        cost:
+          input: 3.0
+          output: 15.0
+          cacheRead: 0.15
+          cacheWrite: 3.75
+        thinkingLevelMap:
+          off: null
+          minimal: minimal
+          low: low
+          medium: medium
+          high: high
+          xhigh: null
+          max: max
+        compat:
+          supportsDeveloperRole: true
   # gpt profile models over the responses API — the completions API rejects
   # function tools with reasoning effort (same finding as opencode/codex).
   # These entries are constructed from our opencode limits, not proven by

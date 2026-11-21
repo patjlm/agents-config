@@ -1357,6 +1357,12 @@ OMP_DEEPSEEK_MODEL = "rits/deepseek-ai/DeepSeek-V4.1-Flash-1017"
 # fallback model would only review itself
 OMP_FALLBACK_PROVIDER = "openai-key"
 OMP_FALLBACK_MODEL = "gpt-6-luna"
+# omp discovers extensions in ~/.omp/agent/extensions, like pi does in
+# ~/.pi/agent/extensions. This one is agent-neutral (it only patches the
+# request payload) and lives with pi's extensions because pi is where the
+# repo keeps extension sources; EnMaaS's Gemini models need it in both, or
+# the first tool result turn 400s (see the file's header).
+OMP_SHARED_EXTENSION = REPO / "pi" / "extensions" / "gemini-thought-signature.ts"
 
 
 def set_omp_model_roles(config: dict, check_only: bool) -> None:
@@ -1433,8 +1439,9 @@ def install_omp(servers: dict, config: dict, check_only: bool) -> bool:
     """Render omp/ templates → ~/.omp/agent: models.yml (EnMaaS providers,
     key read via !cat at request time), mcp.json (from mcp/servers.jsonc,
     placeholders → !commands), AGENTS.md (common guidelines — without it
-    omp falls back to reading ~/.claude/CLAUDE.md), plus the surgical
-    modelRoles/advisor edits in omp-owned config.yml."""
+    omp falls back to reading ~/.claude/CLAUDE.md), the Gemini
+    thought-signature extension link, plus the surgical modelRoles/advisor
+    edits in omp-owned config.yml."""
     write_if_changed(OMP_HOME / "AGENTS.md", instructions_text("omp"), check_only)
     models = JINJA.get_template("omp/models.yml.j2").render(home=str(HOME))
     try:
@@ -1450,6 +1457,12 @@ def install_omp(servers: dict, config: dict, check_only: bool) -> bool:
         OMP_HOME / "mcp.json", pi_mcp_json(servers, "omp"), check_only, parse=json.loads
     )
     set_omp_model_roles(config, check_only)
+    link(
+        OMP_HOME / "extensions" / OMP_SHARED_EXTENSION.name,
+        OMP_SHARED_EXTENSION,
+        check_only,
+        root=OMP_HOME,
+    )
     sync_skills(OMP_HOME / "skills", ("omp",), check_only, root=OMP_HOME)
     return True
 

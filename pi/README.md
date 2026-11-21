@@ -110,6 +110,45 @@ anthropic-messages`, baseUrl without `/v1` — the SDK appends
 - Model ids are the plain Anthropic ones; they don't appear in
   `GET /v1/models` but the anthropic endpoint serves them.
 
+## gemini-4-neon and the thought-signature replay
+
+Gemini 4 Neon is live on EnMaaS (in `GET /v1/models` since 2026-11-20) and
+is wired as the paid heavy-reasoning alternative to Claude Opus 5.5 in
+`opencode.jsonc`, `pi/models.json.j2` and `omp/models.yml.j2`
+(`enmaas-google/gemini-4-neon`).
+
+Vertex requires every function call to carry its thought signature back:
+the assistant tool call must repeat `extra_content.google.thought_signature`,
+or the tool result turn fails with `400 … Function call is missing a
+thought_signature in functionCall parts`. pi's `openai-completions` payload
+drops that field, so without help the model works for exactly one tool call.
+`extensions/gemini-thought-signature.ts` closes the loop — it records each
+signature from the provider stream and patches the outgoing assistant tool
+calls, falling back to Google's `skip_thought_signature_validator` when no
+signature was seen. Verified: a two-file write plus read-back works in both
+pi (with the extension) and omp (via the link `install.py` makes into
+`~/.omp/agent/extensions`); the same run with `--no-extensions` 400s.
+opencode keeps the field itself and needs no patch.
+
+codex and claude code cannot use the model at all, for protocol reasons
+rather than signature ones:
+
+- Gemini models are served on `/v1/chat/completions` only. `/v1/responses`
+  404s — codex 0.167 speaks responses only (`wire_api = "chat"` is rejected
+  as no longer supported), so there is no path for it.
+- `/v1/messages` 404s too, so claude code's anthropic-compatible route is
+  out. A translating proxy (litellm) is the only way to give either one the
+  model, and none runs here today.
+
+Endpoint quirks on the OpenAI-compatible route: `reasoning_effort` accepts
+`minimal`/`low`/`medium`/`high`/`max` and rejects `none` (400 "Expected
+'reasoning_effort' to be one of …"), so thinking cannot be turned off (the
+default is high); the `developer` role works; `maxOutputTokens`
+ranges up to but excluding 1048577. Cost is the Vertex list rate passed
+through by EnMaaS ($3 input / $15 output per 1M tokens, cache read $0.15,
+cache write $3.75) — it counts against the monthly AI budget, unlike GLM,
+DeepSeek and Muse Spark.
+
 ## vertex provider quirks
 
 - `@lhl/pi-vertex` 1.1.9 (May 2026, latest) predates pi 1.x and fails to

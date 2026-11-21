@@ -450,6 +450,42 @@
             "context": 1050000,
             "output": 65536
           }
+        },
+        // Heavy-reasoning alternative to claude-opus-5-5. Live on EnMaaS
+        // since 2026-11-20 ("confirmed its in the catalog now", modden,
+        // #forum-enmaas). Verified live on /v1/chat/completions: function
+        // tools with reasoning_effort, image input, streaming, multi-turn
+        // tool loops. Accepted efforts: minimal/low/medium/high/max — no
+        // "none", so thinking cannot be disabled; the default is high.
+        // Only opencode can run it: Vertex requires each function call to
+        // carry its thought_signature back, which opencode does and pi/omp
+        // drop (pi/README.md), and Gemini models 404 on both /v1/responses
+        // and the anthropic endpoint (codex, claude code).
+        // Cost: Vertex list price per 1M tokens, passed through by EnMaaS —
+        // input $3.00, cache read $0.15, cache write $3.75, output $15.00 on
+        // the global endpoint; non-global $3.30/$0.165/$4.125/$16.50.
+        // From https://cloud.google.com/vertex-ai/generative-ai/pricing
+        // (2026-11-21). No promotional credits-back rate applies to Neon.
+        // The API accepts maxOutputTokens up to 1048576; 64K set here like
+        // the other EnMaaS models.
+        "gemini-4-neon": {
+          "name": "Gemini 4 Neon",
+          "limit": {
+            "context": 1000000,
+            "output": 65536
+          },
+          "capabilities": {
+            "input": ["text", "image"],
+            "output": ["text"]
+          },
+          "cost": {
+            "input": 3.0,
+            "output": 15.0,
+            "cache": {
+              "read": 0.15,
+              "write": 3.75
+            }
+          }
         }
       }
     },

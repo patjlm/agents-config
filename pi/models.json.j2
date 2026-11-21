@@ -76,6 +76,39 @@
         }
       ]
     },
+    "enmaas-google": {
+      "baseUrl": "https://api.enmaas.devshift.net/v1",
+      "apiKey": "!cat {{ home }}/.secrets/enmaas-key",
+      "api": "openai-completions",
+      "models": [
+        {
+          "id": "gemini-4-neon",
+          "name": "Gemini 4 Neon (EnMaaS)",
+          "reasoning": true,
+          "input": ["text", "image"],
+          "contextWindow": 1000000,
+          "maxTokens": 65536,
+          "cost": {
+            "input": 3.0,
+            "output": 15.0,
+            "cacheRead": 0.15,
+            "cacheWrite": 3.75
+          },
+          "thinkingLevelMap": {
+            "off": null,
+            "minimal": "minimal",
+            "low": "low",
+            "medium": "medium",
+            "high": "high",
+            "xhigh": null,
+            "max": "max"
+          },
+          "compat": {
+            "supportsDeveloperRole": true
+          }
+        }
+      ]
+    },
     "enmaas-openai": {
       "baseUrl": "https://api.enmaas.devshift.net/v1",
       "apiKey": "!cat {{ home }}/.secrets/enmaas-key",
