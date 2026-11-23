@@ -18,10 +18,11 @@
   // hangs and stalls agent startup. Uncomment once the host is back on the tailnet.
   "chai-bot-gcp-hcp-engineering": {
     "type": "remote",
-    "url": "https://ship-help-mcp-continuous-release-toolting--ship-help-bot.apps.gpc.ocp-hub.prod.psi.redhat.com/personas/gcp_hcp_engineering/mcp",
+    // Moved to a new cluster (the old gpc.ocp-hub host is decommissioned);
+    // tokens stay valid, only the host changed.
+    "url": "https://ship-help-mcp-chai-bot--internal-slack.apps.prod-scale-spoke1-dc-rdu3.itup.redhat.com/personas/gcp_hcp_engineering/mcp",
     "oauth": false,
-    // disabled: unused, and the deployed bot answers 503. Flip to re-enable.
-    "disabled": true,
+    // enabled again 2026-11-23: the old host answered 503, the new one works.
     "headers": {
       // opencode reads the token file at runtime
       "Authorization": "Bearer {file:~/.secrets/chai-bot-gcp-hcp-engineering-token}"
