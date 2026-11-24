@@ -566,7 +566,10 @@ class ChaiAgent(Agent):
             await self._thought(session_id, f"Chai Bot is still researching ({elapsed(started)})")
 
     async def _thought(self, session_id: str, text: str) -> None:
-        await self._notify(session_id, AgentThoughtChunk(content=TextContentBlock(text=text)))
+        # T3 drops messageId on thought chunks and only appends their text, so each
+        # note must carry its own line break or the notes run together.
+        line = text.rstrip("\n") + "\n"
+        await self._notify(session_id, AgentThoughtChunk(content=TextContentBlock(text=line)))
 
     async def _message(self, session_id: str, text: str) -> None:
         await self._notify(session_id, AgentMessageChunk(content=TextContentBlock(text=text)))
