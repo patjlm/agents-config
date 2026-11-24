@@ -21,7 +21,9 @@ persona:
 Simple questions take ~1 minute; a real multi-source question took 7 minutes. There is no
 job id and no polling, so the agent:
 
-- keeps HTTP read timeout off and caps a question with `CHAI_ACP_TIMEOUT_SECONDS`;
+- keeps HTTP read timeout off and caps a question with `CHAI_ACP_TIMEOUT_SECONDS`
+  (45 minutes by default; T3 itself sets no turn limit, and its 30-minute session idle
+  release only applies when no turn is running);
 - reuses one MCP session (`mcp-session-id`) for its whole lifetime, re-initializing once if
   the server rejects it;
 - emits `agent_thought_chunk` for every progress note **and** every
@@ -88,7 +90,7 @@ Environment overrides on the instance:
 | `CHAI_MCP_TOKEN_FILE` | `~/.secrets/chai-mcp-token` — one token from Chai Bot's Slack Home tab covers every persona |
 | `CHAI_MCP_TOKEN` | overrides the file |
 | `CHAI_ACP_PERSONAS_FILE` | `personas.yaml` to read, default the file next to the script |
-| `CHAI_ACP_TIMEOUT_SECONDS` | `900` |
+| `CHAI_ACP_TIMEOUT_SECONDS` | `2700` (45 min) |
 | `CHAI_ACP_HEARTBEAT_SECONDS` | `15` |
 | `CHAI_ACP_DEBUG` | unset; `1` traces to stderr |
 

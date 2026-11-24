@@ -24,7 +24,7 @@ Configuration (environment):
   CHAI_MCP_URL              endpoint template, default /personas/{persona}/mcp on the default host
   CHAI_MCP_TOKEN_FILE       bearer token file, default ~/.secrets/chai-mcp-token
   CHAI_MCP_TOKEN            bearer token, overrides the file
-  CHAI_ACP_TIMEOUT_SECONDS  overall cap per question, default 900
+  CHAI_ACP_TIMEOUT_SECONDS  overall cap per question, default 2700 (45 minutes)
   CHAI_ACP_HEARTBEAT_SECONDS seconds between liveness notes, default 15
   CHAI_ACP_DEBUG            set to 1 for stderr tracing
 """
@@ -87,7 +87,7 @@ MODEL_OPTION_ID = "model"
 MODEL_ID = "chai-auto"
 PERSONA_OPTION_ID = "persona"
 
-TIMEOUT_SECONDS = float(os.environ.get("CHAI_ACP_TIMEOUT_SECONDS", "900"))
+TIMEOUT_SECONDS = float(os.environ.get("CHAI_ACP_TIMEOUT_SECONDS", "2700"))
 HEARTBEAT_SECONDS = float(os.environ.get("CHAI_ACP_HEARTBEAT_SECONDS", "15"))
 DEBUG = os.environ.get("CHAI_ACP_DEBUG") == "1"
 
@@ -527,7 +527,13 @@ class ChaiAgent(Agent):
                 self.chai(session.persona).ask(question, on_progress), TIMEOUT_SECONDS
             )
         except asyncio.TimeoutError:
-            failure = f"no answer within {int(TIMEOUT_SECONDS)}s, turn abandoned"
+            cap = (
+                f"{TIMEOUT_SECONDS / 60:.0f} min" if TIMEOUT_SECONDS >= 60 else f"{TIMEOUT_SECONDS:.0f}s"
+            )
+            failure = (
+                f"no answer within {cap}, turn abandoned "
+                "(raise CHAI_ACP_TIMEOUT_SECONDS to wait longer)"
+            )
         except ChaiError as error:
             failure = str(error)
         except Exception as error:  # noqa: BLE001 - every failure becomes thread text
