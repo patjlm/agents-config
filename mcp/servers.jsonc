@@ -18,24 +18,20 @@
   // hangs and stalls agent startup. Uncomment once the host is back on the tailnet.
   "chai-bot-gcp-hcp-engineering": {
     "type": "remote",
+    // Off since 2026-11-24: the `chai-acp/` ACP provider gives Chai Bot threads of
+    // its own in T3 Code, and agents ask it by delegating there instead of paying
+    // for the tool list in every session. Delete this flag to bring the tool back.
+    "disabled": true,
     // Moved to a new cluster (the old gpc.ocp-hub host is decommissioned);
     // tokens stay valid, only the host changed.
     "url": "https://ship-help-mcp-chai-bot--internal-slack.apps.prod-scale-spoke1-dc-rdu3.itup.redhat.com/personas/gcp_hcp_engineering/mcp",
     "oauth": false,
     // enabled again 2026-11-23: the old host answered 503, the new one works.
+    // One token from Chai Bot's Slack Home tab covers every persona, and is read
+    // at request time by opencode, pi and omp. claude and codex cannot read files:
+    // re-adding them here needs an env-var override instead of {file:...}.
     "headers": {
-      // opencode reads the token file at runtime
-      "Authorization": "Bearer {file:~/.secrets/chai-bot-gcp-hcp-engineering-token}"
-    },
-    // claude can't read files — use the env var (set in bashrc) instead
-    "claude": {
-      "headers": {
-        "Authorization": "Bearer ${CHAI_BOT_GCP_HCP_ENGINEERING_TOKEN}"
-      }
-    },
-    // codex reads the bearer token from the env var (same one as claude)
-    "codex": {
-      "bearer_token_env_var": "CHAI_BOT_GCP_HCP_ENGINEERING_TOKEN"
+      "Authorization": "Bearer {file:~/.secrets/chai-mcp-token}"
     }
   },
   "decision-support": {
