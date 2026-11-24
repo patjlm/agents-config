@@ -6,6 +6,7 @@
 
     uv run --script drive.py ask "your question"
     uv run --script drive.py followup "a question"   # then a context-dependent follow-up
+    uv run --script drive.py persona "your question" [id]  # switch Persona first (default cyborg)
     uv run --script drive.py cancel                  # prompt, then Stop after 12s
 """
 
@@ -90,7 +91,10 @@ async def main() -> None:
         )
         log(f"new_session -> {session.session_id}")
         for option in session.config_options or []:
-            names = [(_field(o, "value"), _field(o, "name")) for o in _field(option, "options") or []]
+            names = [
+                (_field(o, "value"), _field(o, "name"), (_field(o, "description") or "")[:40])
+                for o in _field(option, "options") or []
+            ]
             log(
                 f"  config option {_field(option, 'id')} category={_field(option, 'category')}"
                 f" current={_field(option, 'current_value', 'currentValue')} choices={names}"
@@ -110,6 +114,12 @@ async def main() -> None:
             config_id="model", session_id=session.session_id, value="chai-auto"
         )
         log("set_config_option(model=chai-auto) accepted")
+        if MODE.startswith("persona"):
+            wanted = sys.argv[3] if len(sys.argv) > 3 else "cyborg"
+            await conn.set_config_option(
+                config_id="persona", session_id=session.session_id, value=wanted
+            )
+            log(f"set_config_option(persona={wanted}) accepted")
         result = await conn.prompt(session_id=session.session_id, prompt=[TextContentBlock(text=wrapped)])
         log(f"prompt -> stop_reason={result.stop_reason}")
         if MODE == "followup":

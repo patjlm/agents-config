@@ -1,0 +1,37 @@
+# Personas offered by chai_acp.py in T3 Code's Persona picker.
+#
+# `id` is the Chai Bot persona, used verbatim in the MCP path
+# /personas/<id>/mcp — an id the service does not know answers 404, which the
+# agent reports in the thread. `label` is what the picker shows; it defaults to
+# the id. `description` is shown under the choice in the picker; the ones below
+# are copied from each persona's own `initialize.instructions` blurb.
+# One token covers every persona here, and effort/reasoning level is fixed
+# inside each persona's own pipeline — no MCP parameter exposes it.
+#
+# `default` is the persona a new thread starts on; it defaults to the first entry.
+# The file is read on every new session, so adding a persona needs no restart.
+
+default: gcp_hcp_engineering
+
+personas:
+  - id: gcp_hcp_engineering
+    label: GCP HCP Engineering
+    description: Google Cloud Platform Hosted Control Plane for OpenShift, CI, releases, and design.
+  - id: cyborg
+    label: Cyborg
+    description: Forum Cyborg — org data management, team/component/identity configuration, and the cyborg toolkit; can open GitLab MRs for config changes.
+  - id: ship_public
+    label: SHIP Public
+    description: Public persona for SHIP teams — routes questions to the researcher or direct tools.
+  - id: appsre_support
+    label: AppSRE Support
+    description: AppSRE support — app-interface service catalog, SRE operations, and APPSRE Jira for #sd-app-sre.
+  - id: chai_find
+    label: Chai Find
+    description: Routes questions to the Chai Bot persona that owns the domain.
+  - id: chai_users
+    label: Chai Users
+    description: Chai Bot support and onboarding — finding the right persona, and integration requests.
+  - id: enmaas_support
+    label: EnMaaS Support
+    description: EnMaaS user support.

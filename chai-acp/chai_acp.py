@@ -4,6 +4,7 @@
 # dependencies = [
 #     "agent-client-protocol>=1.0.0",
 #     "httpx>=0.27",
+#     "pyyaml>=6",
 # ]
 # ///
 """ACP agent that fronts Chai Bot (`ask_persona`) so T3 Code can run it as a provider.
@@ -19,8 +20,9 @@ Protocol notes:
     only the user request is forwarded to Chai Bot.
 
 Configuration (environment):
-  CHAI_MCP_URL              MCP endpoint, default the gcp_hcp_engineering persona
-  CHAI_MCP_TOKEN_FILE       bearer token file, default ~/.secrets/chai-bot-gcp-hcp-engineering-token
+  CHAI_ACP_PERSONAS_FILE    personas.yaml to use, default the file next to this script
+  CHAI_MCP_URL              endpoint template, default /personas/{persona}/mcp on the default host
+  CHAI_MCP_TOKEN_FILE       bearer token file, default ~/.secrets/chai-mcp-token
   CHAI_MCP_TOKEN            bearer token, overrides the file
   CHAI_ACP_TIMEOUT_SECONDS  overall cap per question, default 900
   CHAI_ACP_HEARTBEAT_SECONDS seconds between liveness notes, default 15
@@ -43,6 +45,7 @@ from pathlib import Path
 from typing import Any
 
 import httpx
+import yaml
 from acp import Agent, InitializeResponse, NewSessionResponse, PromptResponse, run_agent
 from acp.interfaces import Client
 from acp.schema import (
@@ -59,26 +62,30 @@ from acp.schema import (
 
 DEFAULT_URL = (
     "https://ship-help-mcp-chai-bot--internal-slack.apps.prod-scale-spoke1-dc-rdu3"
-    ".itup.redhat.com/personas/gcp_hcp_engineering/mcp"
+    ".itup.redhat.com/personas/{persona}/mcp"
 )
-DEFAULT_TOKEN_FILE = "~/.secrets/chai-bot-gcp-hcp-engineering-token"
+DEFAULT_TOKEN_FILE = "~/.secrets/chai-mcp-token"
+
+# One token covers every persona; only the URL path selects it. The list lives in
+# personas.yaml because the service exposes no catalog (unknown ids 404).
+PERSONAS_FILE = Path(__file__).with_name("personas.yaml")
+
+
+@dataclass(frozen=True)
+class Persona:
+    """One picker choice: the id is the MCP path segment."""
+
+    id: str
+    label: str
+    description: str | None = None
+
+
+FALLBACK_PERSONAS: list[Persona] = [Persona("gcp_hcp_engineering", "GCP HCP Engineering")]
 
 # T3 Code labels an unreported model "Default"; one named choice avoids that.
 MODEL_OPTION_ID = "model"
 MODEL_ID = "chai-auto"
-MODEL_OPTION = SessionConfigOptionSelect(
-    id=MODEL_OPTION_ID,
-    name="Model",
-    category="model",
-    current_value=MODEL_ID,
-    options=[
-        SessionConfigSelectOption(
-            value=MODEL_ID,
-            name="Chai-Auto",
-            description="The Chai Bot persona picks its own research strategy.",
-        )
-    ],
-)
+PERSONA_OPTION_ID = "persona"
 
 TIMEOUT_SECONDS = float(os.environ.get("CHAI_ACP_TIMEOUT_SECONDS", "900"))
 HEARTBEAT_SECONDS = float(os.environ.get("CHAI_ACP_HEARTBEAT_SECONDS", "15"))
@@ -91,6 +98,17 @@ _USER_REQUEST = re.compile(r"<user_request>(.*?)</user_request>", re.S)
 def log(message: str) -> None:
     if DEBUG:
         print(f"chai-acp: {message}", file=sys.stderr, flush=True)
+
+
+_WARNED: set[str] = set()
+
+
+def warn(message: str) -> None:
+    """Configuration problems must show up without CHAI_ACP_DEBUG, once each."""
+    if message in _WARNED:
+        return
+    _WARNED.add(message)
+    print(f"chai-acp: {message}", file=sys.stderr, flush=True)
 
 
 def elapsed(since: float) -> str:
@@ -117,11 +135,101 @@ def read_token() -> str:
         raise ChaiError(f"Cannot read Chai Bot token at {path}: {error}") from error
 
 
+def persona_file() -> Path:
+    override = os.environ.get("CHAI_ACP_PERSONAS_FILE", "").strip()
+    return Path(override).expanduser() if override else PERSONAS_FILE
+
+
+def load_personas() -> tuple[list[Persona], str]:
+    """Read personas.yaml: the personas and the id a new session starts on.
+
+    Re-read on every `session/new`, so editing the file needs no restart.
+    """
+    path = persona_file()
+    fallback = (list(FALLBACK_PERSONAS), FALLBACK_PERSONAS[0].id)
+    try:
+        document = yaml.safe_load(path.read_text()) or {}
+    except OSError as error:
+        warn(f"cannot read {path} ({error}); using {FALLBACK_PERSONAS[0].id} only")
+        return fallback
+    except yaml.YAMLError as error:
+        warn(f"{path} is not valid YAML ({error}); using {FALLBACK_PERSONAS[0].id} only")
+        return fallback
+
+    entries: list[Persona] = []
+    for item in (document.get("personas") or []) if isinstance(document, dict) else []:
+        if isinstance(item, str):
+            item = {"id": item}
+        if not isinstance(item, dict):
+            continue
+        persona_id = str(item.get("id") or "").strip()
+        if not persona_id:
+            warn(f"skipping a persona without an id in {path}")
+            continue
+        if any(existing.id == persona_id for existing in entries):
+            continue
+        entries.append(
+            Persona(
+                id=persona_id,
+                label=str(item.get("label") or "").strip() or persona_id,
+                description=str(item.get("description") or "").strip() or None,
+            )
+        )
+    if not entries:
+        warn(f"no personas in {path}; using {FALLBACK_PERSONAS[0].id} only")
+        return fallback
+
+    requested = str((document.get("default") or "")).strip()
+    ids = {entry.id for entry in entries}
+    default = requested if requested in ids else entries[0].id
+    if requested and default != requested:
+        warn(f"default persona {requested!r} is not in {path}; starting on {default}")
+    return entries, default
+
+
+def persona_url(persona_id: str) -> str:
+    template = os.environ.get("CHAI_MCP_URL", DEFAULT_URL)
+    return template.format(persona=persona_id) if "{persona}" in template else template
+
+
+def model_option() -> SessionConfigOptionSelect:
+    return SessionConfigOptionSelect(
+        id=MODEL_OPTION_ID,
+        name="Model",
+        category="model",
+        current_value=MODEL_ID,
+        options=[
+            SessionConfigSelectOption(
+                value=MODEL_ID,
+                name="Chai-Auto",
+                description="The Chai Bot persona picks its own research strategy.",
+            )
+        ],
+    )
+
+
+def persona_option(current: str, entries: list[Persona]) -> SessionConfigOptionSelect:
+    return SessionConfigOptionSelect(
+        id=PERSONA_OPTION_ID,
+        name="Persona",
+        current_value=current,
+        options=[
+            SessionConfigSelectOption(
+                value=persona.id,
+                name=persona.label,
+                **({"description": persona.description} if persona.description else {}),
+            )
+            for persona in entries
+        ],
+    )
+
+
 class ChaiMcp:
     """Minimal MCP client: streamable HTTP, `progressToken` progress, one session at a time."""
 
-    def __init__(self) -> None:
-        self._url = os.environ.get("CHAI_MCP_URL", DEFAULT_URL)
+    def __init__(self, persona: str) -> None:
+        self.persona = persona
+        self._url = persona_url(persona)
         self._token = read_token()
         log(f"mcp endpoint {self._url}")
         self._session_id: str | None = None
@@ -166,6 +274,11 @@ class ChaiMcp:
                 },
                 timeout=httpx.Timeout(60.0, connect=30.0),
             )
+            if response.status_code == 404:
+                raise ChaiError(
+                    f"Unknown persona {self.persona!r}: {self._url} answers 404. "
+                    "Add the id to personas.yaml, or fix the persona path in CHAI_MCP_URL."
+                )
             if response.status_code >= 400:
                 raise ChaiError(
                     f"MCP initialize failed: HTTP {response.status_code} {response.text[:300]}"
@@ -298,6 +411,7 @@ def prompt_text(prompt: list[Any]) -> str:
 @dataclass
 class Session:
     cwd: str
+    persona: str
     history: list[tuple[str, str]] = field(default_factory=list)
     task: asyncio.Task[None] | None = None
     titled: bool = False
@@ -310,16 +424,17 @@ class ChaiAgent(Agent):
 
     def __init__(self) -> None:
         self._sessions: dict[str, Session] = {}
-        self._chai: ChaiMcp | None = None
+        self._clients: dict[str, ChaiMcp] = {}
 
     def on_connect(self, conn: Client) -> None:
         self._conn = conn
 
-    @property
-    def chai(self) -> ChaiMcp:
-        if self._chai is None:
-            self._chai = ChaiMcp()
-        return self._chai
+    def chai(self, persona: str) -> ChaiMcp:
+        """One MCP session per persona, kept warm for the process lifetime."""
+        client = self._clients.get(persona)
+        if client is None:
+            client = self._clients[persona] = ChaiMcp(persona)
+        return client
 
     async def initialize(
         self,
@@ -333,17 +448,36 @@ class ChaiAgent(Agent):
 
     async def new_session(self, cwd: str | None = None, **kwargs: Any) -> NewSessionResponse:
         session_id = uuid.uuid4().hex
+        entries, default = load_personas()
+        session = Session(cwd=cwd or os.getcwd(), persona=default)
         # T3 injects its own MCP servers here; Chai Bot has no tools to hand them.
-        self._sessions[session_id] = Session(cwd=cwd or os.getcwd())
-        log(f"new session {session_id} cwd={cwd}")
-        return NewSessionResponse(session_id=session_id, config_options=[MODEL_OPTION])
+        self._sessions[session_id] = session
+        log(f"new session {session_id} cwd={cwd} persona={session.persona}")
+        return NewSessionResponse(
+            session_id=session_id,
+            config_options=[model_option(), persona_option(session.persona, entries)],
+        )
 
     async def set_config_option(
         self, config_id: str, session_id: str, value: str | bool, **kwargs: Any
     ) -> SetSessionConfigOptionResponse | None:
-        # One model exists, so any accepted value is already what this agent runs.
+        session = self._sessions.get(session_id)
+        entries, default = load_personas()
+        # Changing the model is a no-op: one model exists and it is what this agent runs.
+        if config_id == PERSONA_OPTION_ID and session is not None and isinstance(value, str):
+            if value in {persona.id for persona in entries}:
+                if value != session.persona:
+                    log(f"persona {session.persona} -> {value} session={session_id}")
+                    session.persona = value
+                    # Chai Bot is stateless, but the previous persona's answers are not.
+                    session.history.clear()
+            else:
+                log(f"unknown persona {value!r}, keeping {session.persona}")
         log(f"set_config_option {config_id}={value!r} session={session_id}")
-        return SetSessionConfigOptionResponse(config_options=[MODEL_OPTION])
+        current = session.persona if session is not None else default
+        return SetSessionConfigOptionResponse(
+            config_options=[model_option(), persona_option(current, entries)]
+        )
 
     async def prompt(self, session_id: str, prompt: list[Any], **kwargs: Any) -> PromptResponse:
         session = self._sessions.get(session_id)
@@ -389,7 +523,9 @@ class ChaiAgent(Agent):
             await self._thought(session_id, f"Chai Bot: {note} ({elapsed(started)})")
 
         try:
-            answer = await asyncio.wait_for(self.chai.ask(question, on_progress), TIMEOUT_SECONDS)
+            answer = await asyncio.wait_for(
+                self.chai(session.persona).ask(question, on_progress), TIMEOUT_SECONDS
+            )
         except asyncio.TimeoutError:
             failure = f"no answer within {int(TIMEOUT_SECONDS)}s, turn abandoned"
         except ChaiError as error:
@@ -434,8 +570,8 @@ class ChaiAgent(Agent):
             await self._conn.session_update(session_id=session_id, update=update, source="chai-acp")
 
     async def aclose(self) -> None:
-        if self._chai is not None:
-            await self._chai.aclose()
+        for client in self._clients.values():
+            await client.aclose()
 
 
 def _with_history(session: Session, text: str) -> str:
