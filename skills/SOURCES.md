@@ -39,4 +39,5 @@ skills and removal candidates: [`README.md`](README.md).
 | `prow-job-search` | local (this repo) | — | — |
 | `git` | local (this repo, was `claude/skills/git`) | — | — |
 | `repo-expert` | local (this repo, was `claude/skills/repo-expert`) | — | — |
+| `t3-cleanup-1m-orphaned-worktrees` | local (this repo) | — | — |
 | `terminal-browser` | `terminal-browser` app skill, mirrored (identical to `~/.local/share/terminal-browser/app/skills/default/terminal-browser` at import) | — | — |
